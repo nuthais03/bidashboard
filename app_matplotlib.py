@@ -5,38 +5,53 @@ import matplotlib.pyplot as plt
 # --------------------------------
 # Page setup
 # --------------------------------
-st.set_page_config(page_title="Performance Dashboard (Matplotlib)", layout="wide")
+st.set_page_config(page_title="Performance Dashboard - Matplotlib", layout="wide")
 
 st.title("Performance Dashboard - Matplotlib")
-st.caption("Leads and Messages dashboards using Matplotlib.")
+st.caption("Leads and Messages dashboards using Matplotlib")
 
 # --------------------------------
-# Dashboard switch
+# Session state
 # --------------------------------
-col1, col2 = st.columns(2)
-
 if "mode" not in st.session_state:
-    st.session_state.mode = "Leads"
+    st.session_state.mode = None   # Nothing selected initially
 
-with col1:
-    if st.button("LEADS", use_container_width=True):
+# --------------------------------
+# Centered Buttons
+# --------------------------------
+st.markdown("### Select Dashboard")
+
+left, center, right = st.columns([1,2,1])
+
+with center:
+    b1, b2 = st.columns(2)
+    
+    if b1.button("LEADS", use_container_width=True):
         st.session_state.mode = "Leads"
-
-with col2:
-    if st.button("MESSAGES", use_container_width=True):
+        
+    if b2.button("MESSAGES", use_container_width=True):
         st.session_state.mode = "Messages"
 
-st.write(f"**Current Dashboard:** {st.session_state.mode}")
 st.divider()
 
 # --------------------------------
-# Upload file
+# If nothing selected → stop
 # --------------------------------
-st.subheader("Upload Data")
-uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
+if st.session_state.mode is None:
+    st.info("Select LEADS or MESSAGES to continue.")
+    st.stop()
+
+# --------------------------------
+# Upload section (only after click)
+# --------------------------------
+st.subheader(f"{st.session_state.mode} Dashboard")
+uploaded_file = st.file_uploader(
+    f"Upload Excel file for {st.session_state.mode}",
+    type=["xlsx"]
+)
 
 if not uploaded_file:
-    st.info("Upload an Excel file to continue.")
+    st.info("Upload a file to view the dashboard.")
     st.stop()
 
 # --------------------------------
@@ -80,11 +95,9 @@ if destination != "All":
     d = d[d["destination"] == destination]
 
 # --------------------------------
-# LEADS DASHBOARD
+# LEADS Dashboard
 # --------------------------------
 if st.session_state.mode == "Leads":
-
-    st.subheader("Leads Dashboard")
 
     total_spend = d["spent"].sum()
     total_leads = d["leads"].sum()
@@ -97,52 +110,29 @@ if st.session_state.mode == "Leads":
 
     st.divider()
 
-    # --------------------------------
-    # Matplotlib Charts
-    # --------------------------------
-    colA, colB = st.columns(2)
+    col1, col2 = st.columns(2)
 
     # Spend by Brand
     spend_brand = d.groupby("brand")["spent"].sum().sort_values()
-
     fig1, ax1 = plt.subplots()
     spend_brand.plot(kind="barh", ax=ax1)
     ax1.set_title("Spend by Brand")
-    ax1.set_xlabel("GBP")
-    ax1.set_ylabel("Brand")
-    colA.pyplot(fig1)
+    col1.pyplot(fig1)
 
     # Leads by Brand
     leads_brand = d.groupby("brand")["leads"].sum().sort_values()
-
     fig2, ax2 = plt.subplots()
     leads_brand.plot(kind="barh", ax=ax2)
     ax2.set_title("Leads by Brand")
-    ax2.set_xlabel("Leads")
-    ax2.set_ylabel("Brand")
-    colB.pyplot(fig2)
-
-    st.divider()
-
-    # Destination chart
-    dest_data = d.groupby("destination")[["spent", "leads"]].sum()
-
-    fig3, ax3 = plt.subplots()
-    dest_data["spent"].sort_values().plot(kind="barh", ax=ax3)
-    ax3.set_title("Spend by Destination")
-    st.pyplot(fig3)
+    col2.pyplot(fig2)
 
 # --------------------------------
-# MESSAGES DASHBOARD (placeholder)
+# MESSAGES Dashboard (placeholder)
 # --------------------------------
 else:
-    st.subheader("Messages Dashboard")
-    st.info("This section is reserved for Messages campaign data.")
-
+    st.info("Messages dashboard will be added later.")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Messages", "-")
-    m2.metric("Total Spend", "-")
+    m1.metric("Messages", "-")
+    m2.metric("Spend", "-")
     m3.metric("Brands", "-")
     m4.metric("Destinations", "-")
-
-    st.write("Charts will be added once Messages data is available.")
