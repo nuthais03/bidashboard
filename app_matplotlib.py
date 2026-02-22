@@ -1,5 +1,5 @@
-# app.py ✅ COMPLETE CODE (Upload + Manual Entry + Save/Load Google Sheets + Editable Table + CSV Template + Charts + PDF)
-# -----------------------------------------------------------------------------------------
+# app.py ✅ FULL BRANDED (OWT) — Upload + Manual Entry (Google Sheet) + Editable Table + CSV Template + Charts + PDF
+# -------------------------------------------------------------------------------------------------------------
 # requirements.txt:
 # streamlit
 # pandas
@@ -12,7 +12,7 @@
 #
 # Streamlit Secrets (Settings -> Secrets):
 # gsheet_id = "YOUR_SPREADSHEET_ID"
-# gsheet_tab = "Data"   # optional
+# gsheet_tab = "Data"   # optional (default: Data)
 #
 # [gcp_service_account]
 # type = "service_account"
@@ -25,7 +25,7 @@
 # token_uri = "https://oauth2.googleapis.com/token"
 # auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
 # client_x509_cert_url = "..."
-# -----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 import io
 import numpy as np
@@ -53,26 +53,181 @@ except ModuleNotFoundError:
 
 
 # -----------------------------
-# Page setup + style
+# Branding config (OWT)
 # -----------------------------
-st.set_page_config(page_title="Marketing Performance Dashboard", layout="wide")
+OWT_LOGO_URL = "https://owtgroupltd.co.uk/assets/images/OWT%20Group%20Logo-TransparentBackground1.png"
+APP_TITLE = "Marketing Performance Dashboard"
+APP_TAGLINE = "Private performance dashboard — upload Excel/CSV or enter data manually."
+BRAND_ACCENT = "#3B82F6"  # subtle blue accent
+
+# -----------------------------
+# Page setup + theme
+# -----------------------------
+st.set_page_config(page_title=APP_TITLE, layout="wide")
 pio.templates.default = "plotly_dark"
 
+
+# -----------------------------
+# Full branded header + UI CSS
+# -----------------------------
 st.markdown(
-    """
+    f"""
     <style>
-      .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
-      section[data-testid="stSidebar"] { padding-top: 1rem; }
-      h1, h2, h3 { letter-spacing: 0.2px; }
-      [data-testid="stCaptionContainer"] { opacity: 0.85; }
-      [data-testid="stMetricValue"] { font-size: 1.6rem; }
-      .mode-note { text-align:center; opacity:0.85; margin: 6px 0 14px 0; }
-      .card { border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:14px; background:rgba(255,255,255,0.02); }
-      .muted { opacity:0.85; }
+      /* page spacing to avoid header overlap */
+      .block-container {{
+          padding-top: 96px;
+          padding-bottom: 2rem;
+      }}
+      section[data-testid="stSidebar"] {{
+          padding-top: 1rem;
+      }}
+      h1, h2, h3 {{
+          letter-spacing: 0.2px;
+      }}
+      [data-testid="stCaptionContainer"] {{
+          opacity: 0.85;
+      }}
+      [data-testid="stMetricValue"] {{
+          font-size: 1.6rem;
+      }}
+
+      /* cards */
+      .card {{
+          border:1px solid rgba(255,255,255,0.10);
+          border-radius:14px;
+          padding:14px;
+          background:rgba(255,255,255,0.02);
+      }}
+      .muted {{ opacity:0.85; }}
+
+      /* mode note */
+      .mode-note {{
+          text-align:center;
+          opacity:0.85;
+          margin: 6px 0 14px 0;
+      }}
+
+      /* ---------- BRANDED TOP HEADER ---------- */
+      .owt-header {{
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 74px;
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 18px;
+          background: linear-gradient(180deg, rgba(12,16,26,0.95) 0%, rgba(12,16,26,0.75) 100%);
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          backdrop-filter: blur(10px);
+      }}
+      .owt-left {{
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 220px;
+      }}
+      .owt-logo {{
+          height: 46px;
+          width: auto;
+      }}
+      .owt-appname {{
+          font-size: 14px;
+          font-weight: 700;
+          opacity: 0.95;
+          line-height: 1.1;
+      }}
+      .owt-sub {{
+          font-size: 12px;
+          opacity: 0.70;
+          margin-top: 2px;
+      }}
+
+      .owt-center {{
+          text-align: center;
+          flex: 1;
+      }}
+      .owt-title {{
+          font-size: 16px;
+          font-weight: 800;
+          opacity: 0.95;
+          margin: 0;
+      }}
+      .owt-tagline {{
+          font-size: 12px;
+          opacity: 0.70;
+          margin: 2px 0 0 0;
+      }}
+
+      .owt-right {{
+          min-width: 220px;
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 10px;
+          opacity: 0.85;
+      }}
+      .pill {{
+          border: 1px solid rgba(255,255,255,0.14);
+          border-radius: 999px;
+          padding: 6px 10px;
+          font-size: 12px;
+          background: rgba(255,255,255,0.03);
+      }}
+      .dot {{
+          height: 8px;
+          width: 8px;
+          border-radius: 50%;
+          background: {BRAND_ACCENT};
+          display: inline-block;
+          margin-right: 6px;
+      }}
+      /* Streamlit buttons aesthetic */
+      div.stButton > button {{
+          border-radius: 10px;
+      }}
     </style>
+
+    <div class="owt-header">
+      <div class="owt-left">
+        <img class="owt-logo" src="{OWT_LOGO_URL}" />
+        <div>
+          <div class="owt-appname">OWT Group</div>
+          <div class="owt-sub">Performance Suite</div>
+        </div>
+      </div>
+
+      <div class="owt-center">
+        <p class="owt-title">{APP_TITLE}</p>
+        <p class="owt-tagline">{APP_TAGLINE}</p>
+      </div>
+
+      <div class="owt-right">
+        <span class="pill"><span class="dot"></span>Private</span>
+        <span class="pill">GBP</span>
+      </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
+
+# Sidebar brand block
+st.sidebar.markdown(
+    f"""
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 6px 12px 6px;">
+      <img src="{OWT_LOGO_URL}" style="height:38px; width:auto;" />
+      <div>
+        <div style="font-weight:800; line-height:1.1;">OWT Dashboard</div>
+        <div style="opacity:0.75; font-size:12px;">Leads & Messaging</div>
+      </div>
+    </div>
+    <div style="height:1px; background:rgba(255,255,255,0.08); margin:0 0 10px 0;"></div>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 MONTH_ORDER = [
     "January","February","March","April","May","June",
@@ -194,7 +349,7 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     w, h = A4
 
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(2 * cm, h - 2 * cm, "Leads Performance Report")
+    c.drawString(2 * cm, h - 2 * cm, "OWT — Leads Performance Report")
 
     c.setFont("Helvetica", 10)
     c.drawString(
@@ -342,17 +497,15 @@ if "manual_data" not in st.session_state:
 
 
 # -----------------------------
-# Header + mode selector
+# Mode selector (centered)
 # -----------------------------
-st.title("Marketing Performance Dashboard")
-st.caption("Private performance dashboard — upload Excel/CSV or enter data manually.")
-
-left, mid, right = st.columns([1, 3, 1])
+# (Header is already fixed; we keep content clean)
+spacer_l, mid, spacer_r = st.columns([1, 3, 1])
 with mid:
-    c1, c2 = st.columns(2)
-    if c1.button("LEADS", use_container_width=True):
+    b1, b2 = st.columns(2)
+    if b1.button("LEADS", use_container_width=True):
         st.session_state.mode = "LEADS"
-    if c2.button("MESSAGES", use_container_width=True):
+    if b2.button("MESSAGES", use_container_width=True):
         st.session_state.mode = "MESSAGES"
 
 st.markdown('<div class="mode-note">Click <b>LEADS</b> or <b>MESSAGES</b> to continue.</div>', unsafe_allow_html=True)
@@ -524,7 +677,7 @@ st.download_button(
 
 
 # -----------------------------
-# ✅ TABLE SECTION + CSV TEMPLATE (what you asked)
+# ✅ TABLE SECTION + CSV TEMPLATE
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
@@ -534,7 +687,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# CSV template right inside table section
 template_df = pd.DataFrame([
     {"Month":"January","Brand":"OWT","Destination":"Philippines","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
     {"Month":"January","Brand":"TH-UK","Destination":"Thailand","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
@@ -558,12 +710,10 @@ with st.form("edit_form", clear_on_submit=False):
             "month": st.column_config.TextColumn("Month", disabled=True),
             "brand": st.column_config.TextColumn("Brand", disabled=True),
             "destination": st.column_config.TextColumn("Destination", disabled=True),
-
             "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
             "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
             "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
             "leads": st.column_config.NumberColumn("Leads", disabled=True),
-
             "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
             "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
         },
@@ -599,7 +749,6 @@ if apply_btn:
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
-
 st.divider()
 
 
@@ -621,7 +770,6 @@ k3.metric("Total Impressions", f"{total_impr:,}")
 k4.metric("Overall CPL", f"£{overall_cpl:,.2f}")
 k5.metric("Total Converted Leads", f"{total_conv:,}")
 k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
-
 st.divider()
 
 
@@ -647,7 +795,6 @@ brand_cpl = brand_cpl.sort_values("cpl", ascending=True)
 fig3 = px.bar(brand_cpl, x="cpl", y="brand", orientation="h", title="CPL by Brand")
 fig3.update_layout(xaxis_title="CPL (GBP)", yaxis_title="Brand")
 b3.plotly_chart(fig3, use_container_width=True)
-
 st.divider()
 
 
@@ -677,7 +824,6 @@ top_leads = dest.sort_values("leads", ascending=False).head(top_n).sort_values("
 fig5 = px.bar(top_leads, x="leads", y="destination", orientation="h", title="Top Destinations by Leads")
 fig5.update_layout(xaxis_title="Leads", yaxis_title="Destination")
 c2.plotly_chart(fig5, use_container_width=True)
-
 st.divider()
 
 
