@@ -6,10 +6,14 @@ import streamlit as st
 import plotly.express as px
 import plotly.io as pio
 
-# PDF
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
+# Optional PDF (won't crash if reportlab not installed)
+PDF_AVAILABLE = True
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import cm
+except ModuleNotFoundError:
+    PDF_AVAILABLE = False
 
 # --------------------------------
 # Page setup
@@ -28,7 +32,6 @@ st.markdown(
       h1, h2, h3 { letter-spacing: 0.2px; }
       [data-testid="stCaptionContainer"] { opacity: 0.85; }
       [data-testid="stMetricValue"] { font-size: 1.7rem; }
-      .mode-wrap { display:flex; justify-content:center; gap:14px; margin: 18px 0 8px 0; }
       .mode-note { text-align:center; opacity:0.85; margin-bottom: 12px; }
       .card { border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:14px; background:rgba(255,255,255,0.02); }
       .muted { opacity:0.85; }
@@ -46,11 +49,10 @@ MONTH_ORDER = [
 ]
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Accepts either your new template columns, or old template with Spent (GBP)."""
+    """Accepts either new template columns, or old template with Spent (GBP)."""
     df = df.copy()
     df.columns = df.columns.str.strip()
 
-    # Standard rename map (flexible)
     rename_map = {
         "Month": "month",
         "Brand": "brand",
@@ -60,18 +62,17 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "Leads": "leads",
         "Converted Leads": "converted_leads",
         "Conversion Rate": "conversion_rate",
-        "Spent (GBP)": "spent_gbp",  # legacy support
+        "Spent (GBP)": "spent_gbp",
         "Spent": "spent_gbp",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Ensure core cols exist
     required_any = {"month", "brand", "destination", "leads"}
     missing_any = required_any - set(df.columns)
     if missing_any:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing_any))}")
 
-    # Optional cols
+    # Optional columns default
     if "impressions" not in df.columns:
         df["impressions"] = 0
     if "converted_leads" not in df.columns:
@@ -81,7 +82,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if "conversion_rate" not in df.columns:
         df["conversion_rate"] = np.nan
     if "spent_gbp" not in df.columns:
-        df["spent_gbp"] = np.nan  # only needed for computing CPL if CPL missing
+        df["spent_gbp"] = np.nan
 
     # Clean types
     df["month"] = df["month"].astype(str).str.strip()
@@ -104,18 +105,14 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_row_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute CPL and conversion rate row-wise if missing."""
+    """Compute CPL and conversion rate row-wise (CR from converted/leads; CPL from given CPL or spent/leads)."""
     out = df.copy()
-
     leads_safe = out["leads"].replace(0, np.nan)
 
-    # Conversion rate (always computed from converted/leads)
+    # Always compute conversion rate from converted/leads
     out["conversion_rate"] = (out["converted_leads"] / leads_safe).fillna(0.0)
 
-    # CPL:
-    # If CPL provided -> use it
-    # Else if spent_gbp exists -> compute spent/leads
-    # Else -> 0
+    # CPL: keep given CPL; else compute from spent/leads; else 0
     cpl_from_spend = (out["spent_gbp"] / leads_safe)
     out["cpl"] = out["cpl"].where(out["cpl"].notna(), cpl_from_spend).fillna(0.0)
 
@@ -123,24 +120,24 @@ def compute_row_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_pdf_report(mode: str, filters: dict, d: pd.DataFrame) -> bytes:
-    """Simple professional PDF summary."""
+    """Simple PDF summary. Requires reportlab."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    # Header
     c.setFont("Helvetica-Bold", 16)
     c.drawString(2*cm, h - 2*cm, f"Performance Report — {mode}")
 
     c.setFont("Helvetica", 10)
-    c.drawString(2*cm, h - 2.8*cm, f"Month: {filters.get('month','All')} | Brand: {filters.get('brand','All')} | Destination: {filters.get('destination','All')}")
+    c.drawString(
+        2*cm, h - 2.8*cm,
+        f"Month: {filters.get('month','All')} | Brand: {filters.get('brand','All')} | Destination: {filters.get('destination','All')}"
+    )
 
-    # KPIs
     total_leads = int(d["leads"].sum())
     total_converted = int(d["converted_leads"].sum())
     total_impr = int(d["impressions"].sum())
 
-    # overall CPL: weighted avg by leads if possible; else mean
     if total_leads > 0:
         overall_cpl = float((d["cpl"] * d["leads"]).sum() / total_leads)
         overall_cr = float(total_converted / total_leads)
@@ -162,7 +159,6 @@ def build_pdf_report(mode: str, filters: dict, d: pd.DataFrame) -> bytes:
     y -= 0.6*cm
     c.drawString(2*cm, y, f"Overall Conversion Rate: {overall_cr*100:,.2f}%")
 
-    # Top 10 table (by leads)
     y -= 1.2*cm
     c.setFont("Helvetica-Bold", 12)
     c.drawString(2*cm, y, "Top Rows (by Leads)")
@@ -199,7 +195,6 @@ def build_pdf_report(mode: str, filters: dict, d: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
-
 # --------------------------------
 # Title + mode selector
 # --------------------------------
@@ -209,7 +204,6 @@ st.caption("Choose a dashboard (Leads / Messages), upload data, and explore insi
 if "mode" not in st.session_state:
     st.session_state.mode = None
 
-# Center buttons
 left, mid, right = st.columns([1, 3, 1])
 with mid:
     b1, b2 = st.columns(2)
@@ -226,7 +220,7 @@ if not st.session_state.mode:
 st.divider()
 
 # --------------------------------
-# Upload section (shown after selecting mode)
+# Upload section
 # --------------------------------
 st.subheader("Upload Data")
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
@@ -266,7 +260,6 @@ destination = st.sidebar.selectbox("Destination", ["All"] + sorted(d["destinatio
 if destination != "All":
     d = d[d["destination"] == destination]
 
-# Recompute after filtering (safe)
 d = compute_row_metrics(d)
 
 # --------------------------------
@@ -289,56 +282,61 @@ st.download_button(
 )
 
 # --------------------------------
-# --------------------------------
-# Manual Inputs table (edit only inputs)
+# ONE Proper Table (editable inputs + auto-calc outputs)
 # --------------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Manual Inputs (Optional)")
 st.markdown(
     '<div class="muted">Edit <b>Impressions</b> and <b>Converted Leads</b>. '
-    '<b>CPL</b> and <b>Conversion Rate</b> update automatically below.</div>',
+    '<b>CPL</b> and <b>Conversion Rate</b> update automatically.</div>',
     unsafe_allow_html=True
 )
 
-input_cols = ["month","brand","destination","impressions","leads","converted_leads"]
-inputs = d[input_cols].copy()
+TABLE_KEY = "manual_table"
+display_cols = [
+    "month", "brand", "destination",
+    "impressions", "cpl", "leads", "converted_leads", "conversion_rate"
+]
+
+filter_signature = f"{month}|{brand}|{destination}|{len(d)}"
+if "table_signature" not in st.session_state or st.session_state.table_signature != filter_signature:
+    base = d[display_cols].copy()
+    base["conversion_rate"] = base["conversion_rate"] * 100  # show as %
+    st.session_state[TABLE_KEY] = base
+    st.session_state.table_signature = filter_signature
 
 edited = st.data_editor(
-    inputs,
+    st.session_state[TABLE_KEY],
     use_container_width=True,
     hide_index=True,
+    key=TABLE_KEY,
     column_config={
         "month": st.column_config.TextColumn("Month", disabled=True),
         "brand": st.column_config.TextColumn("Brand", disabled=True),
         "destination": st.column_config.TextColumn("Destination", disabled=True),
+
         "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
+
+        "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
+
         "leads": st.column_config.NumberColumn("Leads", disabled=True),
+
         "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
+
+        "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
     },
 )
 
-# Push edits back + compute metrics
-d["impressions"] = pd.to_numeric(edited["impressions"], errors="coerce").fillna(0).astype(int)
-d["converted_leads"] = pd.to_numeric(edited["converted_leads"], errors="coerce").fillna(0).astype(int)
-d = compute_row_metrics(d)
+tmp = d.copy()
+tmp["impressions"] = pd.to_numeric(edited["impressions"], errors="coerce").fillna(0).astype(int)
+tmp["converted_leads"] = pd.to_numeric(edited["converted_leads"], errors="coerce").fillna(0).astype(int)
+tmp = compute_row_metrics(tmp)
 
-# Show calculated result table (THIS will update correctly)
-result = d[["month","brand","destination","impressions","cpl","leads","converted_leads","conversion_rate"]].copy()
-result["conversion_rate"] = result["conversion_rate"] * 100  # convert to %
-result = result.rename(columns={"conversion_rate": "conversion_rate_%"})
+updated = tmp[display_cols].copy()
+updated["conversion_rate"] = updated["conversion_rate"] * 100  # show as %
+st.session_state[TABLE_KEY] = updated
 
-st.dataframe(
-    result,
-    use_container_width=True,
-    hide_index=True,
-)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# push edits back
-d["impressions"] = pd.to_numeric(edited["impressions"], errors="coerce").fillna(0).astype(int)
-d["converted_leads"] = pd.to_numeric(edited["converted_leads"], errors="coerce").fillna(0).astype(int)
-d = compute_row_metrics(d)
+d = tmp
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -383,7 +381,8 @@ brand_cpl = d.groupby("brand", as_index=False).apply(
     lambda x: pd.Series({
         "cpl": (x["cpl"] * x["leads"]).sum() / x["leads"].sum() if x["leads"].sum() > 0 else 0
     })
-).reset_index()
+).reset_index(drop=True)
+
 brand_cpl = brand_cpl.sort_values("cpl", ascending=True)
 fig2 = px.bar(brand_cpl, x="cpl", y="brand", orientation="h", title="CPL by Brand (Weighted)")
 fig2.update_layout(xaxis_title="CPL", yaxis_title="Brand")
@@ -421,23 +420,23 @@ st.divider()
 # Report download (PDF)
 # --------------------------------
 filters = {"month": month, "brand": brand, "destination": destination}
-pdf_bytes = build_pdf_report("LEADS", filters, d)
 
-st.download_button(
-    "Download Summary Report (PDF)",
-    data=pdf_bytes,
-    file_name=f"report_{month}_{brand}_{destination}.pdf".replace(" ", "_"),
-    mime="application/pdf"
-)
+if PDF_AVAILABLE:
+    pdf_bytes = build_pdf_report("LEADS", filters, d)
+    st.download_button(
+        "Download Summary Report (PDF)",
+        data=pdf_bytes,
+        file_name=f"report_{month}_{brand}_{destination}.pdf".replace(" ", "_"),
+        mime="application/pdf"
+    )
+else:
+    st.warning("PDF export is disabled because 'reportlab' is not installed. Add 'reportlab' to requirements.txt to enable PDF downloads.")
 
 # --------------------------------
 # Full table
 # --------------------------------
 with st.expander("Show full filtered table"):
-    show_cols = [
-        "month","brand","destination","impressions","cpl","leads","converted_leads","conversion_rate"
-    ]
-    out = d[show_cols].copy()
+    out = d[display_cols].copy()
     out["conversion_rate"] = out["conversion_rate"] * 100
     out = out.rename(columns={"conversion_rate": "conversion_rate_%"})
     st.dataframe(out, use_container_width=True)
