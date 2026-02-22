@@ -555,28 +555,11 @@ st.download_button(
 st.write("")
 
 # -----------------------------
-# ✅ OVERALL SUMMARY (6 metrics) — restored (BEFORE table)
+# KPI Row (Spend, Leads, Brands, Destinations) — screenshot row (BEFORE table)
 # -----------------------------
 total_spend = float(d["spent_gbp"].sum())
 total_leads = int(d["leads"].sum())
-total_impr = int(d["impressions"].sum())
-total_conv = int(d["converted_leads"].sum())
-overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
-overall_cr = (total_conv / total_leads) if total_leads > 0 else 0.0
 
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-k1.metric("Total Spend", f"£{total_spend:,.2f}")
-k2.metric("Total Leads", f"{total_leads:,}")
-k3.metric("Total Impressions", f"{total_impr:,}")
-k4.metric("Overall CPL", f"£{overall_cpl:,.2f}")
-k5.metric("Total Converted Leads", f"{total_conv:,}")
-k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
-
-st.divider()
-
-# -----------------------------
-# KPI Row (Spend, Leads, Brands, Destinations) — screenshot row (BEFORE table)
-# -----------------------------
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 kpi1.metric("Total Spend", f"£{total_spend:,.2f}")
 kpi2.metric("Total Leads", f"{total_leads:,}")
@@ -691,6 +674,26 @@ if apply_btn:
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
+st.divider()
+
+# -----------------------------
+# ✅ 6 KPI SUMMARY ROW (PLACE BELOW THE TABLE) — requested
+# -----------------------------
+total_spend = float(d["spent_gbp"].sum())
+total_leads = int(d["leads"].sum())
+total_impr = int(d["impressions"].sum())
+total_conv = int(d["converted_leads"].sum())
+overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
+overall_cr = (total_conv / total_leads) if total_leads > 0 else 0.0
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1.metric("Total Spend", f"£{total_spend:,.2f}")
+k2.metric("Total Leads", f"{total_leads:,}")
+k3.metric("Total Impressions", f"{total_impr:,}")
+k4.metric("Overall CPL", f"£{overall_cpl:,.2f}")
+k5.metric("Total Converted Leads", f"{total_conv:,}")
+k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
+
 st.divider()
 
 # -----------------------------
