@@ -341,36 +341,65 @@ st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
 st.markdown(
     '<div class="muted">Edit <b>Impressions</b> and <b>Converted Leads</b>, then click <b>Apply changes</b>. '
-    '<b>CPL</b> and <b>Conversion Rate</b> are calculated automatically.</div>',
+    '<b>CPL</b> and <b>Conversion Rate</b> update automatically.</div>',
     unsafe_allow_html=True
 )
 
-table = d[FINAL_COL_ORDER].copy()
-table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)  # show %
-table = table.rename(columns={"spent_gbp": "spent_gbp"})  # keep internal name
+with st.form("edit_form", clear_on_submit=False):
+    table = d[FINAL_COL_ORDER].copy()
+    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)
 
-edited = st.data_editor(
-    table,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "month": st.column_config.TextColumn("Month", disabled=True),
-        "brand": st.column_config.TextColumn("Brand", disabled=True),
-        "destination": st.column_config.TextColumn("Destination", disabled=True),
+    edited = st.data_editor(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "month": st.column_config.TextColumn("Month", disabled=True),
+            "brand": st.column_config.TextColumn("Brand", disabled=True),
+            "destination": st.column_config.TextColumn("Destination", disabled=True),
 
-        "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
+            "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
 
-        "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
+            "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
+            "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
 
-        "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
+            "leads": st.column_config.NumberColumn("Leads", disabled=True),
 
-        "leads": st.column_config.NumberColumn("Leads", disabled=True),
+            "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
 
-        "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
+            "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
+        },
+    )
 
-        "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
-    },
-)
+    colA, colB = st.columns([1, 1])
+    apply_btn = colA.form_submit_button("Apply changes", type="primary")
+    reset_btn = colB.form_submit_button("Reset manual edits")
+
+if reset_btn:
+    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
+    st.success("Manual edits cleared.")
+    st.rerun()
+
+if apply_btn:
+    # Store overrides using row_id
+    edited_row_id = (
+        edited["month"].astype(str) + "||" + edited["brand"].astype(str) + "||" + edited["destination"].astype(str)
+    )
+
+    imp_map = st.session_state.overrides["impressions"]
+    conv_map = st.session_state.overrides["converted_leads"]
+
+    for rid, imp, conv in zip(edited_row_id, edited["impressions"], edited["converted_leads"]):
+        imp_map[str(rid)] = int(pd.to_numeric(imp, errors="coerce") or 0)
+        conv_map[str(rid)] = int(pd.to_numeric(conv, errors="coerce") or 0)
+
+    st.session_state.overrides["impressions"] = imp_map
+    st.session_state.overrides["converted_leads"] = conv_map
+
+    st.success("Changes applied.")
+    st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 apply_btn = st.button("Apply changes", type="primary")
 reset_btn = st.button("Reset manual edits")
