@@ -1,6 +1,6 @@
-# app.py ✅ COMPLETE CODE (Upload + Manual Entry + Save/Load Google Sheets + Editable Table + Charts + PDF)
+# app.py ✅ COMPLETE CODE (Upload + Manual Entry + Save/Load Google Sheets + Editable Table + CSV Template + Charts + PDF)
 # -----------------------------------------------------------------------------------------
-# Requirements (requirements.txt):
+# requirements.txt:
 # streamlit
 # pandas
 # numpy
@@ -34,7 +34,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.io as pio
 
-# PDF (optional but recommended)
+# PDF
 PDF_AVAILABLE = True
 try:
     from reportlab.lib.pagesizes import A4
@@ -43,7 +43,7 @@ try:
 except ModuleNotFoundError:
     PDF_AVAILABLE = False
 
-# Google Sheets (permanent save)
+# Google Sheets
 GSHEETS_AVAILABLE = True
 try:
     import gspread
@@ -79,7 +79,7 @@ MONTH_ORDER = [
     "July","August","September","October","November","December"
 ]
 
-# Final internal order (as per your requirement)
+# Final internal order
 FINAL_COL_ORDER = [
     "month",
     "brand",
@@ -108,7 +108,6 @@ MANUAL_UI_COLS = [
 # Helpers
 # -----------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize to internal column names + ensure required columns exist."""
     df = df.copy()
     df.columns = df.columns.str.strip()
 
@@ -143,24 +142,20 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
             + " | Required: Month, Brand, Destination, Leads, Spent (GBP)"
         )
 
-    # Defaults
     if "impressions" not in df.columns:
         df["impressions"] = 0
     if "converted_leads" not in df.columns:
         df["converted_leads"] = 0
 
-    # Clean text
     df["month"] = df["month"].astype(str).str.strip()
     df["brand"] = df["brand"].astype(str).str.strip()
     df["destination"] = df["destination"].astype(str).str.strip()
 
-    # Clean numerics
     df["impressions"] = pd.to_numeric(df["impressions"], errors="coerce").fillna(0).astype(int)
     df["spent_gbp"] = pd.to_numeric(df["spent_gbp"], errors="coerce").fillna(0.0).astype(float)
     df["leads"] = pd.to_numeric(df["leads"], errors="coerce").fillna(0).astype(int)
     df["converted_leads"] = pd.to_numeric(df["converted_leads"], errors="coerce").fillna(0).astype(int)
 
-    # Month ordering
     if df["month"].isin(MONTH_ORDER).any():
         df["month"] = pd.Categorical(df["month"], categories=MONTH_ORDER, ordered=True)
 
@@ -168,10 +163,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """Required formulas:
-       CPL = Spent / Leads
-       Conversion Rate = Converted Leads / Leads
-    """
     out = df.copy()
     leads_safe = out["leads"].replace(0, np.nan)
     out["cpl"] = (out["spent_gbp"] / leads_safe).fillna(0.0)
@@ -180,7 +171,6 @@ def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
-    """Apply stored overrides (impressions + converted leads) by row_id."""
     df = base_df.copy()
     if "row_id" not in df.columns:
         df["row_id"] = (
@@ -192,7 +182,6 @@ def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
 
     if imp_map:
         df["impressions"] = df["row_id"].map(imp_map).combine_first(df["impressions"]).astype(int)
-
     if conv_map:
         df["converted_leads"] = df["row_id"].map(conv_map).combine_first(df["converted_leads"]).astype(int)
 
@@ -317,7 +306,6 @@ def load_manual_from_gsheet() -> pd.DataFrame:
 
     df = df[MANUAL_UI_COLS].copy()
 
-    # Clean numeric
     for c in ["Impressions", "Spent (GBP)", "Leads", "Converted Leads"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -346,17 +334,15 @@ def save_manual_to_gsheet(df_ui: pd.DataFrame):
 if "mode" not in st.session_state:
     st.session_state.mode = None
 
-# manual edits for table (upload or manual dataset)
 if "overrides" not in st.session_state:
     st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
 
-# manual dataset storage
 if "manual_data" not in st.session_state:
     st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
 
 
 # -----------------------------
-# Header + Mode Selector
+# Header + mode selector
 # -----------------------------
 st.title("Marketing Performance Dashboard")
 st.caption("Private performance dashboard — upload Excel/CSV or enter data manually.")
@@ -468,25 +454,21 @@ else:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Prepare df_base from manual data
     ui = st.session_state.manual_data.copy()
     if ui.empty:
         st.info("Add at least 1 row to continue.")
         st.stop()
 
-    # Rename UI columns to match normalize_columns expected names
-    ui = ui.rename(columns={
-        "Month": "Month",
-        "Brand": "Brand",
-        "Destination": "Destination",
-        "Impressions": "Impressions",
-        "Spent (GBP)": "Spent (GBP)",
-        "Leads": "Leads",
-        "Converted Leads": "Converted Leads",
-    })
-
     try:
-        df_base = normalize_columns(ui)
+        df_base = normalize_columns(ui.rename(columns={
+            "Month": "Month",
+            "Brand": "Brand",
+            "Destination": "Destination",
+            "Impressions": "Impressions",
+            "Spent (GBP)": "Spent (GBP)",
+            "Leads": "Leads",
+            "Converted Leads": "Converted Leads",
+        }))
     except Exception as e:
         st.error(f"Manual data error: {e}")
         st.stop()
@@ -504,7 +486,7 @@ if st.session_state.mode == "MESSAGES":
 
 
 # -----------------------------
-# Filters (LEADS)
+# Leads filters
 # -----------------------------
 df_base = compute_metrics(df_base)
 
@@ -525,16 +507,13 @@ destination = st.sidebar.selectbox("Destination", ["All"] + sorted(d0["destinati
 if destination != "All":
     d0 = d0[d0["destination"] == destination]
 
-# Apply overrides (impressions + converted_leads) for THIS filtered view
 d0["row_id"] = d0["month"].astype(str) + "||" + d0["brand"].astype(str) + "||" + d0["destination"].astype(str)
 d0 = apply_overrides(d0, st.session_state.overrides)
-
-# Recompute metrics after overrides
 d = compute_metrics(d0)
 
 
 # -----------------------------
-# Export filtered CSV
+# CSV export
 # -----------------------------
 st.download_button(
     "Download filtered data (CSV)",
@@ -543,10 +522,9 @@ st.download_button(
     mime="text/csv",
 )
 
+
 # -----------------------------
-# ✅ Editable Table (THIS IS THE TABLE YOU ASKED FOR)
-# - always visible, right after CSV download
-# - one click Apply (form)
+# ✅ TABLE SECTION + CSV TEMPLATE (what you asked)
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
@@ -556,9 +534,21 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# CSV template right inside table section
+template_df = pd.DataFrame([
+    {"Month":"January","Brand":"OWT","Destination":"Philippines","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
+    {"Month":"January","Brand":"TH-UK","Destination":"Thailand","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
+])
+st.download_button(
+    "Download CSV Template",
+    data=template_df.to_csv(index=False).encode("utf-8"),
+    file_name="leads_template.csv",
+    mime="text/csv"
+)
+
 with st.form("edit_form", clear_on_submit=False):
     table = d[FINAL_COL_ORDER].copy()
-    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)  # show %
+    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)
 
     edited = st.data_editor(
         table,
@@ -636,7 +626,7 @@ st.divider()
 
 
 # -----------------------------
-# Charts: Brand Level
+# Charts: Brand level
 # -----------------------------
 st.subheader("Brand Level")
 b1, b2, b3 = st.columns(3)
@@ -662,7 +652,7 @@ st.divider()
 
 
 # -----------------------------
-# Charts: Destination Level
+# Charts: Destination level
 # -----------------------------
 st.subheader("Destination Level")
 top_n = st.slider("Top N Destinations", 5, 30, 10)
@@ -687,43 +677,6 @@ top_leads = dest.sort_values("leads", ascending=False).head(top_n).sort_values("
 fig5 = px.bar(top_leads, x="leads", y="destination", orientation="h", title="Top Destinations by Leads")
 fig5.update_layout(xaxis_title="Leads", yaxis_title="Destination")
 c2.plotly_chart(fig5, use_container_width=True)
-
-st.divider()
-
-
-# -----------------------------
-# Decomposition View
-# -----------------------------
-st.subheader("Decomposition View")
-t1, t2, t3 = st.tabs(["Brand summary", "Destination summary", "Brand → Destination detail"])
-
-with t1:
-    bs = d.groupby("brand", as_index=False).agg(
-        spend=("spent_gbp", "sum"),
-        leads=("leads", "sum"),
-        impressions=("impressions", "sum"),
-        converted=("converted_leads", "sum"),
-    )
-    bs["cpl"] = np.where(bs["leads"] > 0, bs["spend"] / bs["leads"], 0.0)
-    bs["conversion_rate_%"] = np.where(bs["leads"] > 0, (bs["converted"] / bs["leads"]) * 100, 0.0).round(2)
-    st.dataframe(bs.sort_values("spend", ascending=False), use_container_width=True, hide_index=True)
-
-with t2:
-    ds = dest.copy()
-    ds["conversion_rate_%"] = (ds["conversion_rate"] * 100).round(2)
-    ds = ds.drop(columns=["conversion_rate"])
-    st.dataframe(ds.sort_values("spend", ascending=False), use_container_width=True, hide_index=True)
-
-with t3:
-    bd = d.groupby(["brand", "destination"], as_index=False).agg(
-        spend=("spent_gbp", "sum"),
-        leads=("leads", "sum"),
-        impressions=("impressions", "sum"),
-        converted=("converted_leads", "sum"),
-    )
-    bd["cpl"] = np.where(bd["leads"] > 0, bd["spend"] / bd["leads"], 0.0)
-    bd["conversion_rate_%"] = np.where(bd["leads"] > 0, (bd["converted"] / bd["leads"]) * 100, 0.0).round(2)
-    st.dataframe(bd.sort_values(["spend", "leads"], ascending=False), use_container_width=True, hide_index=True)
 
 st.divider()
 
