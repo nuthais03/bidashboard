@@ -289,43 +289,51 @@ st.download_button(
 )
 
 # --------------------------------
-# Manual Inputs table (row-level CPL + CR)
+# --------------------------------
+# Manual Inputs table (edit only inputs)
 # --------------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Manual Inputs (Optional)")
 st.markdown(
     '<div class="muted">Edit <b>Impressions</b> and <b>Converted Leads</b>. '
-    '<b>CPL</b> and <b>Conversion Rate</b> update automatically.</div>',
+    '<b>CPL</b> and <b>Conversion Rate</b> update automatically below.</div>',
     unsafe_allow_html=True
 )
 
-# Display order EXACTLY as you requested
-display_cols = [
-    "month", "brand", "destination",
-    "impressions", "cpl", "leads", "converted_leads", "conversion_rate"
-]
-table = d[display_cols].copy()
+input_cols = ["month","brand","destination","impressions","leads","converted_leads"]
+inputs = d[input_cols].copy()
 
 edited = st.data_editor(
-    table,
+    inputs,
     use_container_width=True,
     hide_index=True,
     column_config={
         "month": st.column_config.TextColumn("Month", disabled=True),
         "brand": st.column_config.TextColumn("Brand", disabled=True),
         "destination": st.column_config.TextColumn("Destination", disabled=True),
-
         "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
-
-        "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
-
         "leads": st.column_config.NumberColumn("Leads", disabled=True),
-
         "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
-
-        "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
     },
 )
+
+# Push edits back + compute metrics
+d["impressions"] = pd.to_numeric(edited["impressions"], errors="coerce").fillna(0).astype(int)
+d["converted_leads"] = pd.to_numeric(edited["converted_leads"], errors="coerce").fillna(0).astype(int)
+d = compute_row_metrics(d)
+
+# Show calculated result table (THIS will update correctly)
+result = d[["month","brand","destination","impressions","cpl","leads","converted_leads","conversion_rate"]].copy()
+result["conversion_rate"] = result["conversion_rate"] * 100  # convert to %
+result = result.rename(columns={"conversion_rate": "conversion_rate_%"})
+
+st.dataframe(
+    result,
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # push edits back
 d["impressions"] = pd.to_numeric(edited["impressions"], errors="coerce").fillna(0).astype(int)
