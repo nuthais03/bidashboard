@@ -1,45 +1,4 @@
-# app.py ✅ FULL PRODUCTION VERSION (OWT Branded + Light/Dark Toggle + Upload + Manual Entry to Google Sheets + Table + Charts + PDF + Email PDF)
-# ------------------------------------------------------------------------------------------------------------------
-# requirements.txt:
-# streamlit
-# pandas
-# numpy
-# plotly
-# openpyxl
-# reportlab
-# gspread
-# google-auth
-#
-# Streamlit Secrets (Settings -> Secrets) for Google Sheet (optional):
-# gsheet_id = "YOUR_SPREADSHEET_ID"
-# gsheet_tab = "Data"   # optional (default: Data)
-#
-# [gcp_service_account]
-# type = "service_account"
-# project_id = "..."
-# private_key_id = "..."
-# private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-# client_email = "....iam.gserviceaccount.com"
-# client_id = "..."
-# auth_uri = "https://accounts.google.com/o/oauth2/auth"
-# token_uri = "https://oauth2.googleapis.com/token"
-# auth_provider_x509_cert_url = "https://www.googleapis.com/auth/drive"
-# client_x509_cert_url = "..."
-#
-# Streamlit Secrets for Email SMTP (optional - to email PDF)
-# smtp_host = "smtp.gmail.com"
-# smtp_port = 587
-# smtp_user = "yourgmail@gmail.com"
-# smtp_password = "YOUR_GMAIL_APP_PASSWORD"
-# smtp_use_tls = true
-# email_from_name = "OWT Dashboard"
-# ------------------------------------------------------------------------------------------------------------------
-
 import io
-import ssl
-import smtplib
-from email.message import EmailMessage
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -55,14 +14,13 @@ try:
 except ModuleNotFoundError:
     PDF_AVAILABLE = False
 
-# Google Sheets
+# Google Sheets (manual save)
 GSHEETS_AVAILABLE = True
 try:
     import gspread
     from google.oauth2.service_account import Credentials
 except ModuleNotFoundError:
     GSHEETS_AVAILABLE = False
-
 
 # -----------------------------
 # Branding config (OWT)
@@ -72,12 +30,7 @@ APP_TITLE = "Marketing Performance Dashboard"
 APP_TAGLINE = "Private performance dashboard — upload Excel/CSV or enter data manually."
 BRAND_ACCENT = "#3B82F6"
 
-
-# -----------------------------
-# Page setup
-# -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="wide")
-
 
 # -----------------------------
 # Theme State
@@ -87,7 +40,6 @@ if "theme_mode" not in st.session_state:
 
 
 def apply_theme(theme_mode: str) -> None:
-    """Apply CSS + Plotly template based on theme."""
     if theme_mode == "Light":
         pio.templates.default = "plotly_white"
         st.markdown(
@@ -206,9 +158,7 @@ def apply_theme(theme_mode: str) -> None:
 
 apply_theme(st.session_state.theme_mode)
 
-# -----------------------------
-# Sidebar brand block
-# -----------------------------
+# Sidebar logo
 st.sidebar.markdown(
     f"""
     <div style="display:flex; align-items:center; gap:10px; padding:8px 6px 12px 6px;">
@@ -223,23 +173,18 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# -----------------------------
-# Header row + Theme toggle
-# -----------------------------
+# Header + theme toggle
 st.markdown('<div class="header-bar">', unsafe_allow_html=True)
 h1, h2, h3, h4 = st.columns([2, 6, 2, 2])
 
 with h1:
     st.image(OWT_LOGO_URL, width=150)
-
 with h2:
     st.markdown(f"### {APP_TITLE}")
     st.caption(APP_TAGLINE)
-
 with h3:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(f'<span class="pill"><span class="dot"></span>Private</span>', unsafe_allow_html=True)
-
 with h4:
     st.markdown("<br>", unsafe_allow_html=True)
     light = st.toggle("Light mode", value=(st.session_state.theme_mode == "Light"))
@@ -251,41 +196,17 @@ with h4:
 st.markdown("</div>", unsafe_allow_html=True)
 st.write("")
 
-
-# -----------------------------
-# Constants
-# -----------------------------
 MONTH_ORDER = [
     "January","February","March","April","May","June",
     "July","August","September","October","November","December"
 ]
 
 FINAL_COL_ORDER = [
-    "month",
-    "brand",
-    "destination",
-    "impressions",
-    "cpl",
-    "spent_gbp",
-    "leads",
-    "converted_leads",
-    "conversion_rate",
+    "month","brand","destination","impressions","cpl","spent_gbp","leads","converted_leads","conversion_rate"
 ]
 
-MANUAL_UI_COLS = [
-    "Month",
-    "Brand",
-    "Destination",
-    "Impressions",
-    "Spent (GBP)",
-    "Leads",
-    "Converted Leads",
-]
+MANUAL_UI_COLS = ["Month","Brand","Destination","Impressions","Spent (GBP)","Leads","Converted Leads"]
 
-
-# -----------------------------
-# Helpers
-# -----------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = df.columns.str.strip()
@@ -295,12 +216,12 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "Brand": "brand",
         "Destination": "destination",
         "Impressions": "impressions",
-        "CPL": "cpl",
         "Spent (GBP)": "spent_gbp",
         "Spent": "spent_gbp",
         "Spend": "spent_gbp",
         "Leads": "leads",
         "Converted Leads": "converted_leads",
+        "CPL": "cpl",
         "Conversion Rate": "conversion_rate",
     }
 
@@ -311,14 +232,11 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    required = {"month", "brand", "destination", "leads", "spent_gbp"}
+    required = {"month","brand","destination","leads","spent_gbp"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(
-            "Missing required columns: "
-            + ", ".join(sorted(missing))
-            + " | Required: Month, Brand, Destination, Leads, Spent (GBP)"
-        )
+        raise ValueError("Missing required columns: " + ", ".join(sorted(missing)) +
+                         " | Required: Month, Brand, Destination, Leads, Spent (GBP)")
 
     if "impressions" not in df.columns:
         df["impressions"] = 0
@@ -339,7 +257,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-
 def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     leads_safe = out["leads"].replace(0, np.nan)
@@ -347,13 +264,10 @@ def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     out["conversion_rate"] = (out["converted_leads"] / leads_safe).fillna(0.0)
     return out
 
-
 def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
     df = base_df.copy()
     if "row_id" not in df.columns:
-        df["row_id"] = (
-            df["month"].astype(str) + "||" + df["brand"].astype(str) + "||" + df["destination"].astype(str)
-        )
+        df["row_id"] = df["month"].astype(str) + "||" + df["brand"].astype(str) + "||" + df["destination"].astype(str)
 
     imp_map = overrides.get("impressions", {})
     conv_map = overrides.get("converted_leads", {})
@@ -364,7 +278,6 @@ def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
         df["converted_leads"] = df["row_id"].map(conv_map).combine_first(df["converted_leads"]).astype(int)
 
     return df
-
 
 def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
@@ -408,60 +321,18 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
-
-def smtp_ready() -> bool:
-    required = ["smtp_host", "smtp_port", "smtp_user", "smtp_password"]
-    return all(k in st.secrets for k in required)
-
-
-def send_email_with_attachment(to_email: str, subject: str, body: str, attachment_bytes: bytes, filename: str):
-    host = st.secrets["smtp_host"]
-    port = int(st.secrets["smtp_port"])
-    user = st.secrets["smtp_user"]
-    password = st.secrets["smtp_password"]
-    use_tls = bool(st.secrets.get("smtp_use_tls", True))
-    from_name = st.secrets.get("email_from_name", "OWT Dashboard")
-
-    msg = EmailMessage()
-    msg["From"] = f"{from_name} <{user}>"
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.set_content(body)
-
-    msg.add_attachment(
-        attachment_bytes,
-        maintype="application",
-        subtype="pdf",
-        filename=filename
-    )
-
-    context = ssl.create_default_context()
-    if use_tls:
-        with smtplib.SMTP(host, port) as server:
-            server.starttls(context=context)
-            server.login(user, password)
-            server.send_message(msg)
-    else:
-        with smtplib.SMTP_SSL(host, port, context=context) as server:
-            server.login(user, password)
-            server.send_message(msg)
-
-
 # -----------------------------
 # Session state
 # -----------------------------
 if "mode" not in st.session_state:
     st.session_state.mode = None
-
 if "overrides" not in st.session_state:
     st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
-
 if "manual_data" not in st.session_state:
     st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
 
-
 # -----------------------------
-# Mode selector (centered)
+# Mode selector
 # -----------------------------
 sp_l, mid, sp_r = st.columns([1, 3, 1])
 with mid:
@@ -483,7 +354,6 @@ if not st.session_state.mode:
 
 st.divider()
 
-
 # -----------------------------
 # Data input
 # -----------------------------
@@ -497,17 +367,14 @@ data_source = st.radio(
 
 df_base = None
 
-# Google Sheets helpers (inside to avoid unused warnings)
+# Google Sheets helpers
 def _get_gs_client():
     if not GSHEETS_AVAILABLE:
         raise RuntimeError("Google Sheets libraries missing. Add gspread + google-auth to requirements.txt")
     if "gcp_service_account" not in st.secrets or "gsheet_id" not in st.secrets:
         raise RuntimeError("Missing secrets: add gcp_service_account + gsheet_id in Streamlit secrets.")
     creds_info = dict(st.secrets["gcp_service_account"])
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     return gspread.authorize(creds)
 
@@ -546,7 +413,6 @@ def save_manual_to_gsheet(df_ui: pd.DataFrame):
     out = [MANUAL_UI_COLS] + df_ui.astype(str).values.tolist()
     ws.clear()
     ws.update(out)
-
 
 if data_source == "Upload Excel/CSV":
     uploaded_file = st.file_uploader("Upload Excel / CSV", type=["xlsx", "csv"])
@@ -601,7 +467,6 @@ else:
         },
         key="manual_editor",
     )
-
     st.session_state.manual_data = manual_editor.copy()
 
     b1, b2, b3 = st.columns([1, 1, 2])
@@ -647,15 +512,11 @@ else:
 
 st.divider()
 
-
-# -----------------------------
 # Messages placeholder
-# -----------------------------
 if st.session_state.mode == "MESSAGES":
     st.subheader("Messages Dashboard")
     st.info("Messages dashboard coming soon")
     st.stop()
-
 
 # -----------------------------
 # Leads filters
@@ -683,10 +544,7 @@ d0["row_id"] = d0["month"].astype(str) + "||" + d0["brand"].astype(str) + "||" +
 d0 = apply_overrides(d0, st.session_state.overrides)
 d = compute_metrics(d0)
 
-
-# -----------------------------
-# CSV export
-# -----------------------------
+# Export filtered CSV
 st.download_button(
     "Download filtered data (CSV)",
     d[FINAL_COL_ORDER].to_csv(index=False).encode("utf-8"),
@@ -696,9 +554,68 @@ st.download_button(
 
 st.write("")
 
+# -----------------------------
+# ✅ OVERALL SUMMARY (6 metrics) — restored (BEFORE table)
+# -----------------------------
+total_spend = float(d["spent_gbp"].sum())
+total_leads = int(d["leads"].sum())
+total_impr = int(d["impressions"].sum())
+total_conv = int(d["converted_leads"].sum())
+overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
+overall_cr = (total_conv / total_leads) if total_leads > 0 else 0.0
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1.metric("Total Spend", f"£{total_spend:,.2f}")
+k2.metric("Total Leads", f"{total_leads:,}")
+k3.metric("Total Impressions", f"{total_impr:,}")
+k4.metric("Overall CPL", f"£{overall_cpl:,.2f}")
+k5.metric("Total Converted Leads", f"{total_conv:,}")
+k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
+
+st.divider()
 
 # -----------------------------
-# Editable Table + CSV Template
+# KPI Row (Spend, Leads, Brands, Destinations) — screenshot row (BEFORE table)
+# -----------------------------
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+kpi1.metric("Total Spend", f"£{total_spend:,.2f}")
+kpi2.metric("Total Leads", f"{total_leads:,}")
+kpi3.metric("Brands", f"{d['brand'].nunique():,}")
+kpi4.metric("Destinations", f"{d['destination'].nunique():,}")
+
+st.divider()
+
+# -----------------------------
+# Top Brands block — screenshot section (BEFORE table)
+# -----------------------------
+st.markdown("## Top Brands")
+left, right = st.columns(2)
+
+top_spend = (
+    d.groupby("brand", as_index=False)["spent_gbp"].sum()
+    .sort_values("spent_gbp", ascending=False)
+    .head(3)
+)
+top_leads = (
+    d.groupby("brand", as_index=False)["leads"].sum()
+    .sort_values("leads", ascending=False)
+    .head(3)
+)
+
+with left:
+    st.markdown("### Top 3 by Spend")
+    for i, row in enumerate(top_spend.itertuples(index=False), start=1):
+        st.markdown(f"**#{i} {row.brand} — £{row.spent_gbp:,.2f}**")
+
+with right:
+    st.markdown("### Top 3 by Leads")
+    for i, row in enumerate(top_leads.itertuples(index=False), start=1):
+        st.markdown(f"**#{i} {row.brand} — {int(row.leads):,} leads**")
+
+st.divider()
+
+# -----------------------------
+# ✅ Editable Table (after the summary blocks)
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
@@ -708,6 +625,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# CSV template download (for table section)
 template_df = pd.DataFrame([
     {"Month":"January","Brand":"OWT","Destination":"Philippines","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
     {"Month":"January","Brand":"TH-UK","Destination":"Thailand","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
@@ -719,7 +637,7 @@ st.download_button(
     mime="text/csv"
 )
 
-# IMPORTANT: use FORM so you don't need to click twice
+# Use FORM so you never need to click twice
 with st.form("edit_form", clear_on_submit=False):
     table = d[FINAL_COL_ORDER].copy()
     table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)
@@ -733,17 +651,19 @@ with st.form("edit_form", clear_on_submit=False):
             "brand": st.column_config.TextColumn("Brand", disabled=True),
             "destination": st.column_config.TextColumn("Destination", disabled=True),
             "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
+
             "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
             "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
             "leads": st.column_config.NumberColumn("Leads", disabled=True),
+
             "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
             "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
         },
     )
 
-    col1, col2 = st.columns([1, 1])
-    apply_btn = col1.form_submit_button("Apply changes", type="primary")
-    reset_btn = col2.form_submit_button("Reset manual edits")
+    cA, cB = st.columns([1, 1])
+    apply_btn = cA.form_submit_button("Apply changes", type="primary")
+    reset_btn = cB.form_submit_button("Reset manual edits")
 
 if reset_btn:
     st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
@@ -773,57 +693,6 @@ if apply_btn:
 st.markdown("</div>", unsafe_allow_html=True)
 st.divider()
 
-
-# -----------------------------
-# KPI Summary
-# -----------------------------
-total_spend = float(d["spent_gbp"].sum())
-total_leads = int(d["leads"].sum())
-total_impr = int(d["impressions"].sum())
-total_conv = int(d["converted_leads"].sum())
-overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
-overall_cr = (total_conv / total_leads) if total_leads > 0 else 0.0
-
-# Row like screenshot: Spend, Leads, Brands, Destinations
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("Total Spend", f"£{total_spend:,.2f}")
-kpi2.metric("Total Leads", f"{total_leads:,}")
-kpi3.metric("Brands", f"{d['brand'].nunique():,}")
-kpi4.metric("Destinations", f"{d['destination'].nunique():,}")
-
-st.divider()
-
-# -----------------------------
-# Top Brands block (like your screenshot)
-# -----------------------------
-st.markdown("## Top Brands")
-left, right = st.columns(2)
-
-top_spend = (
-    d.groupby("brand", as_index=False)["spent_gbp"].sum()
-    .sort_values("spent_gbp", ascending=False)
-    .head(3)
-)
-
-top_leads = (
-    d.groupby("brand", as_index=False)["leads"].sum()
-    .sort_values("leads", ascending=False)
-    .head(3)
-)
-
-with left:
-    st.markdown("### Top 3 by Spend")
-    for i, row in enumerate(top_spend.itertuples(index=False), start=1):
-        st.markdown(f"**#{i} {row.brand} — £{row.spent_gbp:,.2f}**")
-
-with right:
-    st.markdown("### Top 3 by Leads")
-    for i, row in enumerate(top_leads.itertuples(index=False), start=1):
-        st.markdown(f"**#{i} {row.brand} — {int(row.leads):,} leads**")
-
-st.divider()
-
-
 # -----------------------------
 # Charts: Brand level
 # -----------------------------
@@ -849,9 +718,8 @@ b3.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
 
-
 # -----------------------------
-# Charts: Destination level
+# Destination level
 # -----------------------------
 st.subheader("Destination Level")
 top_n = st.slider("Top N Destinations", 5, 30, 10)
@@ -862,11 +730,9 @@ dest = d.groupby("destination", as_index=False).agg(
     converted=("converted_leads", "sum"),
     impressions=("impressions", "sum"),
 )
-dest["cpl"] = np.where(dest["leads"] > 0, dest["spend"] / dest["leads"], 0.0)
 dest["conversion_rate"] = np.where(dest["leads"] > 0, dest["converted"] / dest["leads"], 0.0)
 
 c1, c2 = st.columns(2)
-
 top_spend = dest.sort_values("spend", ascending=False).head(top_n).sort_values("spend")
 fig4 = px.bar(top_spend, x="spend", y="destination", orientation="h", title="Top Destinations by Spend")
 fig4.update_layout(xaxis_title="Spend (GBP)", yaxis_title="Destination")
@@ -879,18 +745,14 @@ c2.plotly_chart(fig5, use_container_width=True)
 
 st.divider()
 
-
 # -----------------------------
-# PDF Export + Email Report (NO extra server; uses SMTP)
+# PDF Download
 # -----------------------------
 filters = {"month": month, "brand": brand, "destination": destination}
 
-pdf_bytes = b""
-pdf_name = f"report_{month}_{brand}_{destination}.pdf".replace(" ", "_")
-
 if PDF_AVAILABLE:
     pdf_bytes = build_pdf_report(filters, d)
-
+    pdf_name = f"report_{month}_{brand}_{destination}.pdf".replace(" ", "_")
     st.download_button(
         "Download final summary as PDF",
         data=pdf_bytes,
@@ -900,48 +762,6 @@ if PDF_AVAILABLE:
 else:
     st.warning("PDF export disabled. Add 'reportlab' to requirements.txt.")
 
-st.write("")
-
-st.markdown("### Email Summary Report (PDF)")
-if not PDF_AVAILABLE:
-    st.info("Enable PDF first (install reportlab) to email the report.")
-else:
-    if not smtp_ready():
-        st.info("To enable emailing, add SMTP secrets (smtp_host, smtp_port, smtp_user, smtp_password) in Streamlit Secrets.")
-    else:
-        to_email = st.text_input("Send to (email)", placeholder="example@gmail.com")
-        subject = st.text_input("Subject", value=f"OWT Leads Report — {month} ({brand}/{destination})")
-        body = st.text_area(
-            "Message",
-            value=(
-                f"Hi,\n\nPlease find attached the OWT Leads Summary Report.\n\n"
-                f"Filters:\n- Month: {month}\n- Brand: {brand}\n- Destination: {destination}\n\n"
-                f"KPIs:\n- Spend: £{total_spend:,.2f}\n- Leads: {total_leads:,}\n- CPL: £{overall_cpl:,.2f}\n- Conversion Rate: {overall_cr*100:,.2f}%\n\n"
-                f"Thanks,\nOWT Dashboard"
-            ),
-            height=160
-        )
-
-        if st.button("Send Email", type="primary"):
-            if not to_email or "@" not in to_email:
-                st.error("Please enter a valid email address.")
-            else:
-                try:
-                    send_email_with_attachment(
-                        to_email=to_email.strip(),
-                        subject=subject.strip(),
-                        body=body,
-                        attachment_bytes=pdf_bytes,
-                        filename=pdf_name
-                    )
-                    st.success(f"Email sent to {to_email.strip()}")
-                except Exception as e:
-                    st.error(f"Email failed: {e}")
-
-
-# -----------------------------
-# Final dataset (optional)
-# -----------------------------
 with st.expander("Show final filtered dataset"):
     out = d[FINAL_COL_ORDER].copy()
     out["conversion_rate_%"] = (out["conversion_rate"] * 100).round(2)
