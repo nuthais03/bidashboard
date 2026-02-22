@@ -1,22 +1,31 @@
-# app.py ✅ Plotly / Production version + Google Sheets Save/Load (Permanent)
-# ------------------------------------------------------------
-# What you get:
-# 1) LEADS + MESSAGES buttons (top-center)
-# 2) Data Input:
-#    - Upload Excel/CSV
-#    - Enter data manually
-# 3) Manual data:
-#    - Add/edit rows
-#    - Save to Google Sheet (permanent)
-#    - Load from Google Sheet
-#    - Download CSV backup
-# 4) Leads dashboard:
-#    - Sidebar filters (Month/Brand/Destination)
-#    - KPI Summary
-#    - Charts (Brand + Destination)
-#    - Decomposition view (tabs)
-#    - Export CSV + PDF
-# ------------------------------------------------------------
+# app.py ✅ COMPLETE CODE (Upload + Manual Entry + Save/Load Google Sheets + Editable Table + Charts + PDF)
+# -----------------------------------------------------------------------------------------
+# Requirements (requirements.txt):
+# streamlit
+# pandas
+# numpy
+# plotly
+# openpyxl
+# reportlab
+# gspread
+# google-auth
+#
+# Streamlit Secrets (Settings -> Secrets):
+# gsheet_id = "YOUR_SPREADSHEET_ID"
+# gsheet_tab = "Data"   # optional
+#
+# [gcp_service_account]
+# type = "service_account"
+# project_id = "..."
+# private_key_id = "..."
+# private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+# client_email = "....iam.gserviceaccount.com"
+# client_id = "..."
+# auth_uri = "https://accounts.google.com/o/oauth2/auth"
+# token_uri = "https://oauth2.googleapis.com/token"
+# auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+# client_x509_cert_url = "..."
+# -----------------------------------------------------------------------------------------
 
 import io
 import numpy as np
@@ -25,7 +34,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.io as pio
 
-# Optional PDF
+# PDF (optional but recommended)
 PDF_AVAILABLE = True
 try:
     from reportlab.lib.pagesizes import A4
@@ -34,7 +43,7 @@ try:
 except ModuleNotFoundError:
     PDF_AVAILABLE = False
 
-# Optional Google Sheets
+# Google Sheets (permanent save)
 GSHEETS_AVAILABLE = True
 try:
     import gspread
@@ -44,7 +53,7 @@ except ModuleNotFoundError:
 
 
 # -----------------------------
-# Page setup + theme
+# Page setup + style
 # -----------------------------
 st.set_page_config(page_title="Marketing Performance Dashboard", layout="wide")
 pio.templates.default = "plotly_dark"
@@ -70,7 +79,7 @@ MONTH_ORDER = [
     "July","August","September","October","November","December"
 ]
 
-# Internal final order (matches your requirement)
+# Final internal order (as per your requirement)
 FINAL_COL_ORDER = [
     "month",
     "brand",
@@ -83,7 +92,7 @@ FINAL_COL_ORDER = [
     "conversion_rate",
 ]
 
-# Manual entry (user-facing) columns (keeps it simple)
+# Manual entry (UI columns)
 MANUAL_UI_COLS = [
     "Month",
     "Brand",
@@ -165,14 +174,32 @@ def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
     leads_safe = out["leads"].replace(0, np.nan)
-
     out["cpl"] = (out["spent_gbp"] / leads_safe).fillna(0.0)
     out["conversion_rate"] = (out["converted_leads"] / leads_safe).fillna(0.0)
     return out
 
 
+def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
+    """Apply stored overrides (impressions + converted leads) by row_id."""
+    df = base_df.copy()
+    if "row_id" not in df.columns:
+        df["row_id"] = (
+            df["month"].astype(str) + "||" + df["brand"].astype(str) + "||" + df["destination"].astype(str)
+        )
+
+    imp_map = overrides.get("impressions", {})
+    conv_map = overrides.get("converted_leads", {})
+
+    if imp_map:
+        df["impressions"] = df["row_id"].map(imp_map).combine_first(df["impressions"]).astype(int)
+
+    if conv_map:
+        df["converted_leads"] = df["row_id"].map(conv_map).combine_first(df["converted_leads"]).astype(int)
+
+    return df
+
+
 def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
-    """Simple PDF summary for filtered data."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
@@ -251,19 +278,11 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
 # Google Sheets helpers
 # -----------------------------
 def _get_gs_client():
-    """
-    Requires these secrets in Streamlit Cloud:
-    - st.secrets["gcp_service_account"]  (full service account JSON as a dict)
-    - st.secrets["gsheet_id"] (spreadsheet ID)
-    - optional: st.secrets["gsheet_tab"] (tab name, default "Data")
-    """
     if not GSHEETS_AVAILABLE:
         raise RuntimeError("Google Sheets libraries missing. Add gspread + google-auth to requirements.txt")
 
     if "gcp_service_account" not in st.secrets or "gsheet_id" not in st.secrets:
-        raise RuntimeError(
-            "Missing Streamlit secrets. Add 'gcp_service_account' and 'gsheet_id' in Streamlit secrets."
-        )
+        raise RuntimeError("Missing secrets: add gcp_service_account + gsheet_id in Streamlit secrets.")
 
     creds_info = dict(st.secrets["gcp_service_account"])
     scopes = [
@@ -271,65 +290,52 @@ def _get_gs_client():
         "https://www.googleapis.com/auth/drive",
     ]
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client
+    return gspread.authorize(creds)
 
 
-def load_manual_from_gsheet() -> pd.DataFrame:
+def gsheet_get_ws():
     client = _get_gs_client()
     sheet_id = st.secrets["gsheet_id"]
     tab = st.secrets.get("gsheet_tab", "Data")
-
     sh = client.open_by_key(sheet_id)
-    ws = sh.worksheet(tab)
+    return sh.worksheet(tab)
 
+
+def load_manual_from_gsheet() -> pd.DataFrame:
+    ws = gsheet_get_ws()
     values = ws.get_all_values()
     if not values or len(values) < 2:
         return pd.DataFrame(columns=MANUAL_UI_COLS)
 
     header = values[0]
     rows = values[1:]
-
     df = pd.DataFrame(rows, columns=header)
 
-    # Ensure expected UI columns exist
     for c in MANUAL_UI_COLS:
         if c not in df.columns:
             df[c] = ""
 
     df = df[MANUAL_UI_COLS].copy()
 
-    # Clean numeric columns
+    # Clean numeric
     for c in ["Impressions", "Spent (GBP)", "Leads", "Converted Leads"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Month clean
     df["Month"] = df["Month"].astype(str).str.strip()
-
-    # Replace NaNs with blanks for editor display
     df = df.replace({np.nan: ""})
     return df
 
 
 def save_manual_to_gsheet(df_ui: pd.DataFrame):
-    client = _get_gs_client()
-    sheet_id = st.secrets["gsheet_id"]
-    tab = st.secrets.get("gsheet_tab", "Data")
-
-    sh = client.open_by_key(sheet_id)
-    ws = sh.worksheet(tab)
+    ws = gsheet_get_ws()
 
     df_ui = df_ui.copy()
-
-    # Keep only required UI columns
     for c in MANUAL_UI_COLS:
         if c not in df_ui.columns:
             df_ui[c] = ""
-    df_ui = df_ui[MANUAL_UI_COLS]
+    df_ui = df_ui[MANUAL_UI_COLS].fillna("")
 
-    # Convert to strings for Sheets
-    out = [MANUAL_UI_COLS] + df_ui.fillna("").astype(str).values.tolist()
-
+    out = [MANUAL_UI_COLS] + df_ui.astype(str).values.tolist()
     ws.clear()
     ws.update(out)
 
@@ -340,6 +346,11 @@ def save_manual_to_gsheet(df_ui: pd.DataFrame):
 if "mode" not in st.session_state:
     st.session_state.mode = None
 
+# manual edits for table (upload or manual dataset)
+if "overrides" not in st.session_state:
+    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
+
+# manual dataset storage
 if "manual_data" not in st.session_state:
     st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
 
@@ -348,14 +359,14 @@ if "manual_data" not in st.session_state:
 # Header + Mode Selector
 # -----------------------------
 st.title("Marketing Performance Dashboard")
-st.caption("Private performance dashboard — upload Excel/CSV and explore insights.")
+st.caption("Private performance dashboard — upload Excel/CSV or enter data manually.")
 
 left, mid, right = st.columns([1, 3, 1])
 with mid:
-    b1, b2 = st.columns(2)
-    if b1.button("LEADS", use_container_width=True):
+    c1, c2 = st.columns(2)
+    if c1.button("LEADS", use_container_width=True):
         st.session_state.mode = "LEADS"
-    if b2.button("MESSAGES", use_container_width=True):
+    if c2.button("MESSAGES", use_container_width=True):
         st.session_state.mode = "MESSAGES"
 
 st.markdown('<div class="mode-note">Click <b>LEADS</b> or <b>MESSAGES</b> to continue.</div>', unsafe_allow_html=True)
@@ -365,18 +376,19 @@ if not st.session_state.mode:
 
 st.divider()
 
+
 # -----------------------------
-# Upload / Manual input
+# Data input
 # -----------------------------
 st.subheader("Data Input")
 
 data_source = st.radio(
     "Choose data source",
-    ["Upload Excel/CSV", "Enter data manually"],
-    horizontal=True
+    ["Upload Excel/CSV", "Enter data manually (Google Sheet)"],
+    horizontal=True,
 )
 
-df = None  # will be prepared for the dashboard
+df_base = None
 
 if data_source == "Upload Excel/CSV":
     uploaded_file = st.file_uploader("Upload Excel / CSV", type=["xlsx", "csv"])
@@ -389,36 +401,31 @@ if data_source == "Upload Excel/CSV":
             raw = pd.read_csv(uploaded_file)
         else:
             raw = pd.read_excel(uploaded_file)
-        df = normalize_columns(raw)
+        df_base = normalize_columns(raw)
     except Exception as e:
         st.error(f"Could not read your file. Reason: {e}")
         st.stop()
 
 else:
-    # Manual entry UI
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### Manual Entry (Permanent Save to Google Sheets)")
+    st.markdown("### Manual Entry (Saved to Google Sheet)")
     st.markdown(
-        '<div class="muted">Add rows + fill Month, Brand, Destination, Spent (GBP), Leads. '
-        'Converted Leads optional. Use <b>Save to Google Sheet</b> to keep it permanently.</div>',
+        '<div class="muted">Add rows and fill Month, Brand, Destination, Spent (GBP), Leads. '
+        'Converted Leads optional. Click <b>Save to Google Sheet</b> to store permanently.</div>',
         unsafe_allow_html=True
     )
 
-    # Google Sheet actions
-    g1, g2, g3 = st.columns([1, 1, 2])
-    load_btn = g1.button("Load from Google Sheet")
-    save_btn = g2.button("Save to Google Sheet", type="primary")
+    a1, a2, a3 = st.columns([1, 1, 2])
+    load_btn = a1.button("Load from Google Sheet")
+    save_btn = a2.button("Save to Google Sheet", type="primary")
 
-    if not GSHEETS_AVAILABLE:
-        st.warning("Google Sheets not enabled. Add `gspread` and `google-auth` to requirements.txt.")
-    else:
-        if load_btn:
-            try:
-                st.session_state.manual_data = load_manual_from_gsheet()
-                st.success("Loaded from Google Sheet.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Google Sheet load failed: {e}")
+    if load_btn:
+        try:
+            st.session_state.manual_data = load_manual_from_gsheet()
+            st.success("Loaded from Google Sheet.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Google Sheet load failed: {e}")
 
     manual_editor = st.data_editor(
         st.session_state.manual_data,
@@ -434,48 +441,41 @@ else:
             "Leads": st.column_config.NumberColumn("Leads", min_value=0, step=1),
             "Converted Leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
         },
-        key="manual_editor"
+        key="manual_editor",
     )
 
-    # Save to session (so it doesn't vanish on rerun)
     st.session_state.manual_data = manual_editor.copy()
 
-    c1, c2, c3 = st.columns([1, 1, 2])
-    clear_manual = c1.button("Clear manual data")
-    download_csv = c2.download_button(
-        "Download manual data (CSV)",
-        data=st.session_state.manual_data.to_csv(index=False).encode("utf-8"),
-        file_name="manual_data.csv",
-        mime="text/csv"
-    )
-
-    if clear_manual:
+    b1, b2, b3 = st.columns([1, 1, 2])
+    if b1.button("Clear manual data"):
         st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
         st.success("Manual data cleared.")
         st.rerun()
 
+    b2.download_button(
+        "Download manual data (CSV)",
+        data=st.session_state.manual_data.to_csv(index=False).encode("utf-8"),
+        file_name="manual_data.csv",
+        mime="text/csv",
+    )
+
     if save_btn:
-        if not GSHEETS_AVAILABLE:
-            st.error("Google Sheets libraries missing. Add gspread + google-auth.")
-        else:
-            try:
-                save_manual_to_gsheet(st.session_state.manual_data)
-                st.success("Saved to Google Sheet (permanent).")
-            except Exception as e:
-                st.error(f"Google Sheet save failed: {e}")
+        try:
+            save_manual_to_gsheet(st.session_state.manual_data)
+            st.success("Saved to Google Sheet (permanent).")
+        except Exception as e:
+            st.error(f"Google Sheet save failed: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Convert manual schema -> expected schema for dashboard
+    # Prepare df_base from manual data
     ui = st.session_state.manual_data.copy()
-
-    # basic validation
     if ui.empty:
         st.info("Add at least 1 row to continue.")
         st.stop()
 
-    # Rename to internal then normalize
-    ui2 = ui.rename(columns={
+    # Rename UI columns to match normalize_columns expected names
+    ui = ui.rename(columns={
         "Month": "Month",
         "Brand": "Brand",
         "Destination": "Destination",
@@ -486,44 +486,52 @@ else:
     })
 
     try:
-        df = normalize_columns(ui2)
+        df_base = normalize_columns(ui)
     except Exception as e:
         st.error(f"Manual data error: {e}")
         st.stop()
 
 st.divider()
 
+
 # -----------------------------
-# Messages dashboard placeholder
+# Messages placeholder
 # -----------------------------
 if st.session_state.mode == "MESSAGES":
     st.subheader("Messages Dashboard")
     st.info("Messages dashboard coming soon")
     st.stop()
 
+
 # -----------------------------
-# Leads dashboard filters
+# Filters (LEADS)
 # -----------------------------
-df = compute_metrics(df)
+df_base = compute_metrics(df_base)
 
 st.sidebar.header("Filters")
 
-available_months = [m for m in MONTH_ORDER if m in df["month"].dropna().astype(str).unique().tolist()]
+available_months = [m for m in MONTH_ORDER if m in df_base["month"].dropna().astype(str).unique().tolist()]
 if not available_months:
-    available_months = sorted(df["month"].dropna().astype(str).unique().tolist())
+    available_months = sorted(df_base["month"].dropna().astype(str).unique().tolist())
 
 month = st.sidebar.selectbox("Month", available_months)
-d = df[df["month"].astype(str) == str(month)].copy()
+d0 = df_base[df_base["month"].astype(str) == str(month)].copy()
 
-brand = st.sidebar.selectbox("Brand", ["All"] + sorted(d["brand"].dropna().unique()))
+brand = st.sidebar.selectbox("Brand", ["All"] + sorted(d0["brand"].dropna().unique()))
 if brand != "All":
-    d = d[d["brand"] == brand]
+    d0 = d0[d0["brand"] == brand]
 
-destination = st.sidebar.selectbox("Destination", ["All"] + sorted(d["destination"].dropna().unique()))
+destination = st.sidebar.selectbox("Destination", ["All"] + sorted(d0["destination"].dropna().unique()))
 if destination != "All":
-    d = d[d["destination"] == destination]
+    d0 = d0[d0["destination"] == destination]
 
-d = compute_metrics(d)
+# Apply overrides (impressions + converted_leads) for THIS filtered view
+d0["row_id"] = d0["month"].astype(str) + "||" + d0["brand"].astype(str) + "||" + d0["destination"].astype(str)
+d0 = apply_overrides(d0, st.session_state.overrides)
+
+# Recompute metrics after overrides
+d = compute_metrics(d0)
+
 
 # -----------------------------
 # Export filtered CSV
@@ -535,7 +543,75 @@ st.download_button(
     mime="text/csv",
 )
 
+# -----------------------------
+# ✅ Editable Table (THIS IS THE TABLE YOU ASKED FOR)
+# - always visible, right after CSV download
+# - one click Apply (form)
+# -----------------------------
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### Editable Table (Impressions + Converted Leads)")
+st.markdown(
+    '<div class="muted">Edit <b>Impressions</b> and <b>Converted Leads</b>, then click <b>Apply changes</b>. '
+    '<b>CPL</b> and <b>Conversion Rate</b> update automatically.</div>',
+    unsafe_allow_html=True
+)
+
+with st.form("edit_form", clear_on_submit=False):
+    table = d[FINAL_COL_ORDER].copy()
+    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)  # show %
+
+    edited = st.data_editor(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "month": st.column_config.TextColumn("Month", disabled=True),
+            "brand": st.column_config.TextColumn("Brand", disabled=True),
+            "destination": st.column_config.TextColumn("Destination", disabled=True),
+
+            "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
+            "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
+            "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
+            "leads": st.column_config.NumberColumn("Leads", disabled=True),
+
+            "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
+            "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
+        },
+    )
+
+    col1, col2 = st.columns([1, 1])
+    apply_btn = col1.form_submit_button("Apply changes", type="primary")
+    reset_btn = col2.form_submit_button("Reset manual edits")
+
+if reset_btn:
+    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
+    st.success("Manual edits cleared.")
+    st.rerun()
+
+if apply_btn:
+    edited_row_id = (
+        edited["month"].astype(str)
+        + "||" + edited["brand"].astype(str)
+        + "||" + edited["destination"].astype(str)
+    )
+
+    imp_map = st.session_state.overrides["impressions"]
+    conv_map = st.session_state.overrides["converted_leads"]
+
+    for rid, imp, conv in zip(edited_row_id, edited["impressions"], edited["converted_leads"]):
+        imp_map[str(rid)] = int(pd.to_numeric(imp, errors="coerce") or 0)
+        conv_map[str(rid)] = int(pd.to_numeric(conv, errors="coerce") or 0)
+
+    st.session_state.overrides["impressions"] = imp_map
+    st.session_state.overrides["converted_leads"] = conv_map
+
+    st.success("Changes applied.")
+    st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
+
 st.divider()
+
 
 # -----------------------------
 # KPI Summary
@@ -558,11 +634,11 @@ k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
 
 st.divider()
 
+
 # -----------------------------
 # Charts: Brand Level
 # -----------------------------
 st.subheader("Brand Level")
-
 b1, b2, b3 = st.columns(3)
 
 brand_spend = d.groupby("brand", as_index=False)["spent_gbp"].sum().sort_values("spent_gbp", ascending=True)
@@ -583,6 +659,7 @@ fig3.update_layout(xaxis_title="CPL (GBP)", yaxis_title="Brand")
 b3.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
+
 
 # -----------------------------
 # Charts: Destination Level
@@ -613,11 +690,11 @@ c2.plotly_chart(fig5, use_container_width=True)
 
 st.divider()
 
+
 # -----------------------------
 # Decomposition View
 # -----------------------------
 st.subheader("Decomposition View")
-
 t1, t2, t3 = st.tabs(["Brand summary", "Destination summary", "Brand → Destination detail"])
 
 with t1:
@@ -650,6 +727,7 @@ with t3:
 
 st.divider()
 
+
 # -----------------------------
 # PDF Export
 # -----------------------------
@@ -665,8 +743,9 @@ if PDF_AVAILABLE:
 else:
     st.warning("PDF export disabled. Add 'reportlab' to requirements.txt.")
 
+
 # -----------------------------
-# Optional: final dataset
+# Final dataset (optional)
 # -----------------------------
 with st.expander("Show final filtered dataset"):
     out = d[FINAL_COL_ORDER].copy()
