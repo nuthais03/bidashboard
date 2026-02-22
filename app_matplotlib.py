@@ -139,7 +139,7 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     return buf.read()
 
 
-st.title("Marketing Performance Dashboard (Matplotlib)")
+st.title("OWT Marketing Performance Dashboard")
 st.caption("Static-chart version — same logic, separate file.")
 
 if "mode" not in st.session_state:
