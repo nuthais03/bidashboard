@@ -1,5 +1,5 @@
-# app.py ✅ FULL BRANDED (OWT) — Upload + Manual Entry (Google Sheet) + Editable Table + CSV Template + Charts + PDF
-# -------------------------------------------------------------------------------------------------------------
+# app.py ✅ FULL PRODUCTION VERSION (OWT Branded + Light/Dark Toggle + Upload + Manual Entry to Google Sheets + Table + CSV Template + Charts + PDF)
+# ------------------------------------------------------------------------------------------------------------------
 # requirements.txt:
 # streamlit
 # pandas
@@ -25,7 +25,7 @@
 # token_uri = "https://oauth2.googleapis.com/token"
 # auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
 # client_x509_cert_url = "..."
-# -------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 
 import io
 import numpy as np
@@ -58,183 +58,205 @@ except ModuleNotFoundError:
 OWT_LOGO_URL = "https://owtgroupltd.co.uk/assets/images/OWT%20Group%20Logo-TransparentBackground1.png"
 APP_TITLE = "Marketing Performance Dashboard"
 APP_TAGLINE = "Private performance dashboard — upload Excel/CSV or enter data manually."
-BRAND_ACCENT = "#3B82F6"  # subtle blue accent
+BRAND_ACCENT = "#3B82F6"
+
 
 # -----------------------------
-# Page setup + theme
+# Page setup
 # -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="wide")
-pio.templates.default = "plotly_dark"
 
 
 # -----------------------------
-# Full branded header + UI CSS
+# Theme State
 # -----------------------------
-st.markdown(
-    f"""
-    <style>
-      /* page spacing to avoid header overlap */
-      .block-container {{
-          padding-top: 96px;
-          padding-bottom: 2rem;
-      }}
-      section[data-testid="stSidebar"] {{
-          padding-top: 1rem;
-      }}
-      h1, h2, h3 {{
-          letter-spacing: 0.2px;
-      }}
-      [data-testid="stCaptionContainer"] {{
-          opacity: 0.85;
-      }}
-      [data-testid="stMetricValue"] {{
-          font-size: 1.6rem;
-      }}
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "Dark"
 
-      /* cards */
-      .card {{
-          border:1px solid rgba(255,255,255,0.10);
-          border-radius:14px;
-          padding:14px;
-          background:rgba(255,255,255,0.02);
-      }}
-      .muted {{ opacity:0.85; }}
 
-      /* mode note */
-      .mode-note {{
-          text-align:center;
-          opacity:0.85;
-          margin: 6px 0 14px 0;
-      }}
+def apply_theme(theme_mode: str) -> None:
+    """Apply CSS + Plotly template based on theme."""
+    if theme_mode == "Light":
+        pio.templates.default = "plotly_white"
+        st.markdown(
+            f"""
+            <style>
+              .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; }}
+              section[data-testid="stSidebar"] {{ background-color: #ffffff; }}
+              .stApp {{ background-color: #f5f7fb; color: #111111; }}
 
-      /* ---------- BRANDED TOP HEADER ---------- */
-      .owt-header {{
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 74px;
-          z-index: 9999;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 18px;
-          background: linear-gradient(180deg, rgba(12,16,26,0.95) 0%, rgba(12,16,26,0.75) 100%);
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-          backdrop-filter: blur(10px);
-      }}
-      .owt-left {{
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-width: 220px;
-      }}
-      .owt-logo {{
-          height: 46px;
-          width: auto;
-      }}
-      .owt-appname {{
-          font-size: 14px;
-          font-weight: 700;
-          opacity: 0.95;
-          line-height: 1.1;
-      }}
-      .owt-sub {{
-          font-size: 12px;
-          opacity: 0.70;
-          margin-top: 2px;
-      }}
+              h1,h2,h3 {{ letter-spacing: 0.2px; color:#111111; }}
+              [data-testid="stCaptionContainer"] {{ opacity: 0.80; color:#111111; }}
+              [data-testid="stMetricValue"] {{ font-size: 1.6rem; color:#111111; }}
+              [data-testid="stMetricLabel"] {{ color:#111111; opacity:0.85; }}
 
-      .owt-center {{
-          text-align: center;
-          flex: 1;
-      }}
-      .owt-title {{
-          font-size: 16px;
-          font-weight: 800;
-          opacity: 0.95;
-          margin: 0;
-      }}
-      .owt-tagline {{
-          font-size: 12px;
-          opacity: 0.70;
-          margin: 2px 0 0 0;
-      }}
+              .card {{
+                border:1px solid #e5e7eb;
+                border-radius:14px;
+                padding:14px;
+                background:#ffffff;
+              }}
+              .muted {{ opacity:0.75; color:#111111; }}
 
-      .owt-right {{
-          min-width: 220px;
-          display: flex;
-          justify-content: flex-end;
-          align-items: center;
-          gap: 10px;
-          opacity: 0.85;
-      }}
-      .pill {{
-          border: 1px solid rgba(255,255,255,0.14);
-          border-radius: 999px;
-          padding: 6px 10px;
-          font-size: 12px;
-          background: rgba(255,255,255,0.03);
-      }}
-      .dot {{
-          height: 8px;
-          width: 8px;
-          border-radius: 50%;
-          background: {BRAND_ACCENT};
-          display: inline-block;
-          margin-right: 6px;
-      }}
-      /* Streamlit buttons aesthetic */
-      div.stButton > button {{
-          border-radius: 10px;
-      }}
-    </style>
+              /* Buttons */
+              div.stButton > button {{
+                border-radius: 10px;
+              }}
 
-    <div class="owt-header">
-      <div class="owt-left">
-        <img class="owt-logo" src="{OWT_LOGO_URL}" />
-        <div>
-          <div class="owt-appname">OWT Group</div>
-          <div class="owt-sub">Performance Suite</div>
-        </div>
-      </div>
+              /* Sidebar branding block separator */
+              .sb-sep {{
+                height:1px;
+                background: rgba(17,17,17,0.08);
+                margin: 0 0 10px 0;
+              }}
 
-      <div class="owt-center">
-        <p class="owt-title">{APP_TITLE}</p>
-        <p class="owt-tagline">{APP_TAGLINE}</p>
-      </div>
+              /* Header bar (visual) */
+              .header-bar {{
+                border: 1px solid rgba(17,17,17,0.10);
+                background: rgba(255,255,255,0.75);
+                border-radius: 14px;
+                padding: 10px 12px;
+              }}
+              .pill {{
+                border: 1px solid rgba(17,17,17,0.16);
+                border-radius: 999px;
+                padding: 6px 10px;
+                font-size: 12px;
+                background: rgba(17,17,17,0.03);
+                color:#111111;
+                display:inline-flex;
+                align-items:center;
+                gap:6px;
+              }}
+              .dot {{
+                height: 8px;
+                width: 8px;
+                border-radius: 50%;
+                background: {BRAND_ACCENT};
+                display: inline-block;
+              }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        pio.templates.default = "plotly_dark"
+        st.markdown(
+            f"""
+            <style>
+              .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; }}
+              section[data-testid="stSidebar"] {{ background-color: #0b0f17; }}
+              .stApp {{ background-color: #0b0f17; color: #ffffff; }}
 
-      <div class="owt-right">
-        <span class="pill"><span class="dot"></span>Private</span>
-        <span class="pill">GBP</span>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+              h1,h2,h3 {{ letter-spacing: 0.2px; }}
+              [data-testid="stCaptionContainer"] {{ opacity: 0.85; }}
+              [data-testid="stMetricValue"] {{ font-size: 1.6rem; }}
+              .card {{
+                border:1px solid rgba(255,255,255,0.10);
+                border-radius:14px;
+                padding:14px;
+                background:rgba(255,255,255,0.02);
+              }}
+              .muted {{ opacity:0.85; }}
 
+              div.stButton > button {{
+                border-radius: 10px;
+              }}
+
+              .sb-sep {{
+                height:1px;
+                background: rgba(255,255,255,0.08);
+                margin: 0 0 10px 0;
+              }}
+
+              .header-bar {{
+                border: 1px solid rgba(255,255,255,0.10);
+                background: rgba(255,255,255,0.03);
+                border-radius: 14px;
+                padding: 10px 12px;
+              }}
+              .pill {{
+                border: 1px solid rgba(255,255,255,0.14);
+                border-radius: 999px;
+                padding: 6px 10px;
+                font-size: 12px;
+                background: rgba(255,255,255,0.03);
+                display:inline-flex;
+                align-items:center;
+                gap:6px;
+              }}
+              .dot {{
+                height: 8px;
+                width: 8px;
+                border-radius: 50%;
+                background: {BRAND_ACCENT};
+                display: inline-block;
+              }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+apply_theme(st.session_state.theme_mode)
+
+
+# -----------------------------
 # Sidebar brand block
+# -----------------------------
 st.sidebar.markdown(
     f"""
     <div style="display:flex; align-items:center; gap:10px; padding:8px 6px 12px 6px;">
       <img src="{OWT_LOGO_URL}" style="height:38px; width:auto;" />
       <div>
         <div style="font-weight:800; line-height:1.1;">OWT Dashboard</div>
-        <div style="opacity:0.75; font-size:12px;">Leads & Messages</div>
+        <div style="opacity:0.75; font-size:12px;">Leads & Messaging</div>
       </div>
     </div>
-    <div style="height:1px; background:rgba(255,255,255,0.08); margin:0 0 10px 0;"></div>
+    <div class="sb-sep"></div>
     """,
     unsafe_allow_html=True,
 )
 
 
+# -----------------------------
+# Header row (Enterprise look) + Theme toggle (Top-right)
+# -----------------------------
+st.markdown('<div class="header-bar">', unsafe_allow_html=True)
+h1, h2, h3, h4 = st.columns([2, 6, 2, 2])
+
+with h1:
+    st.image(OWT_LOGO_URL, width=150)
+
+with h2:
+    st.markdown(f"### {APP_TITLE}")
+    st.caption(APP_TAGLINE)
+
+with h3:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f'<span class="pill"><span class="dot"></span>Private</span>', unsafe_allow_html=True)
+    st.markdown("")
+
+with h4:
+    st.markdown("<br>", unsafe_allow_html=True)
+    light = st.toggle("Light mode", value=(st.session_state.theme_mode == "Light"))
+    new_mode = "Light" if light else "Dark"
+    if new_mode != st.session_state.theme_mode:
+        st.session_state.theme_mode = new_mode
+        st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
+st.write("")  # spacing
+
+
+# -----------------------------
+# Constants
+# -----------------------------
 MONTH_ORDER = [
     "January","February","March","April","May","June",
     "July","August","September","October","November","December"
 ]
 
-# Final internal order
 FINAL_COL_ORDER = [
     "month",
     "brand",
@@ -247,7 +269,6 @@ FINAL_COL_ORDER = [
     "conversion_rate",
 ]
 
-# Manual entry (UI columns)
 MANUAL_UI_COLS = [
     "Month",
     "Brand",
@@ -280,7 +301,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "Conversion Rate": "conversion_rate",
     }
 
-    # Case-insensitive mapping
     lower_to_actual = {c.lower(): c for c in df.columns}
     for k, v in list(rename_map.items()):
         if k not in df.columns and k.lower() in lower_to_actual:
@@ -499,8 +519,7 @@ if "manual_data" not in st.session_state:
 # -----------------------------
 # Mode selector (centered)
 # -----------------------------
-# (Header is already fixed; we keep content clean)
-spacer_l, mid, spacer_r = st.columns([1, 3, 1])
+sp_l, mid, sp_r = st.columns([1, 3, 1])
 with mid:
     b1, b2 = st.columns(2)
     if b1.button("LEADS", use_container_width=True):
@@ -508,7 +527,12 @@ with mid:
     if b2.button("MESSAGES", use_container_width=True):
         st.session_state.mode = "MESSAGES"
 
-st.markdown('<div class="mode-note">Click <b>LEADS</b> or <b>MESSAGES</b> to continue.</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div style="text-align:center; opacity:0.85; margin: 6px 0 14px 0;">'
+    'Click <b>LEADS</b> or <b>MESSAGES</b> to continue.'
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 if not st.session_state.mode:
     st.stop()
@@ -677,7 +701,7 @@ st.download_button(
 
 
 # -----------------------------
-# ✅ TABLE SECTION + CSV TEMPLATE
+# Editable Table + CSV Template
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
