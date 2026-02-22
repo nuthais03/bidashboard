@@ -220,7 +220,7 @@ st.sidebar.markdown(
       <img src="{OWT_LOGO_URL}" style="height:38px; width:auto;" />
       <div>
         <div style="font-weight:800; line-height:1.1;">OWT Dashboard</div>
-        <div style="opacity:0.75; font-size:12px;">Leads & Messaging</div>
+        <div style="opacity:0.75; font-size:12px;">Leads & Messages</div>
       </div>
     </div>
     <div style="height:1px; background:rgba(255,255,255,0.08); margin:0 0 10px 0;"></div>
