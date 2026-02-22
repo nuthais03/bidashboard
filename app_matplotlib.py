@@ -5,7 +5,7 @@
 # - Editable table: ONLY Impressions + Converted Leads
 # - CPL = Spent / Leads
 # - Conversion Rate = Converted / Leads
-# - Uses "Apply changes" button (stable; no rerun loop)
+# - ONE Apply + ONE Reset (inside a form) -> one click updates conversion rate
 # - Charts + Decomposition + CSV + PDF
 
 import io
@@ -15,7 +15,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.io as pio
 
-# Optional PDF (will work once reportlab is in requirements.txt)
+# Optional PDF (works when reportlab is in requirements.txt)
 PDF_AVAILABLE = True
 try:
     from reportlab.lib.pagesizes import A4
@@ -51,6 +51,7 @@ MONTH_ORDER = [
     "July","August","September","October","November","December"
 ]
 
+# Internal column order (matches your final requirement)
 FINAL_COL_ORDER = [
     "month",
     "brand",
@@ -127,7 +128,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """Force required formulas:
+    """Required formulas:
        CPL = Spent / Leads
        Conversion Rate = Converted Leads / Leads
     """
@@ -142,8 +143,6 @@ def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
 def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
     """Apply stored overrides for impressions & converted leads by row_id."""
     df = base_df.copy()
-    if not overrides:
-        return df
 
     if "row_id" not in df.columns:
         df["row_id"] = (
@@ -238,7 +237,7 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
 
 
 # -----------------------------
-# App header + mode buttons
+# Header + Mode Selector
 # -----------------------------
 st.title("Marketing Performance Dashboard")
 st.caption("Private performance dashboard — upload Excel/CSV and explore insights.")
@@ -246,7 +245,7 @@ st.caption("Private performance dashboard — upload Excel/CSV and explore insig
 if "mode" not in st.session_state:
     st.session_state.mode = None
 
-# store overrides safely (NOT the editor widget key)
+# store overrides safely
 if "overrides" not in st.session_state:
     st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
 
@@ -317,7 +316,7 @@ destination = st.sidebar.selectbox("Destination", ["All"] + sorted(d0["destinati
 if destination != "All":
     d0 = d0[d0["destination"] == destination]
 
-# Add row_id and apply stored overrides
+# Apply stored overrides first
 d0["row_id"] = d0["month"].astype(str) + "||" + d0["brand"].astype(str) + "||" + d0["destination"].astype(str)
 d0 = apply_overrides(d0, st.session_state.overrides)
 
@@ -325,7 +324,7 @@ d0 = apply_overrides(d0, st.session_state.overrides)
 d = compute_metrics(d0)
 
 # -----------------------------
-# Export filtered CSV (uses final metrics)
+# Export filtered CSV
 # -----------------------------
 st.download_button(
     "Download filtered data (CSV)",
@@ -335,7 +334,7 @@ st.download_button(
 )
 
 # -----------------------------
-# Editable table (ONE proper table)
+# Editable table (ONE click apply; ONE set of buttons)
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
@@ -347,7 +346,7 @@ st.markdown(
 
 with st.form("edit_form", clear_on_submit=False):
     table = d[FINAL_COL_ORDER].copy()
-    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)
+    table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)  # show %
 
     edited = st.data_editor(
         table,
@@ -359,21 +358,17 @@ with st.form("edit_form", clear_on_submit=False):
             "destination": st.column_config.TextColumn("Destination", disabled=True),
 
             "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
-
             "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
             "spent_gbp": st.column_config.NumberColumn("Spent (GBP)", format="£%.2f", disabled=True),
-
             "leads": st.column_config.NumberColumn("Leads", disabled=True),
-
             "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
-
             "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
         },
     )
 
-    colA, colB = st.columns([1, 1])
-    apply_btn = colA.form_submit_button("Apply changes", type="primary")
-    reset_btn = colB.form_submit_button("Reset manual edits")
+    col1, col2 = st.columns([1, 1])
+    apply_btn = col1.form_submit_button("Apply changes", type="primary")
+    reset_btn = col2.form_submit_button("Reset manual edits")
 
 if reset_btn:
     st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
@@ -381,9 +376,10 @@ if reset_btn:
     st.rerun()
 
 if apply_btn:
-    # Store overrides using row_id
     edited_row_id = (
-        edited["month"].astype(str) + "||" + edited["brand"].astype(str) + "||" + edited["destination"].astype(str)
+        edited["month"].astype(str)
+        + "||" + edited["brand"].astype(str)
+        + "||" + edited["destination"].astype(str)
     )
 
     imp_map = st.session_state.overrides["impressions"]
@@ -397,39 +393,6 @@ if apply_btn:
     st.session_state.overrides["converted_leads"] = conv_map
 
     st.success("Changes applied.")
-    st.rerun()
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-apply_btn = st.button("Apply changes", type="primary")
-reset_btn = st.button("Reset manual edits")
-
-if reset_btn:
-    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
-    st.success("Manual edits cleared.")
-    st.rerun()
-
-if apply_btn:
-    # rebuild row_id mapping to store overrides
-    row_ids = d["row_id"].tolist()
-
-    # edited has same ordering as table shown; recreate row_id in same order
-    edited_row_id = (
-        edited["month"].astype(str) + "||" + edited["brand"].astype(str) + "||" + edited["destination"].astype(str)
-    ).tolist()
-
-    # Save only the editable columns
-    imp_map = st.session_state.overrides["impressions"]
-    conv_map = st.session_state.overrides["converted_leads"]
-
-    for rid, imp, conv in zip(edited_row_id, edited["impressions"], edited["converted_leads"]):
-        imp_map[rid] = int(pd.to_numeric(imp, errors="coerce") if pd.notna(imp) else 0)
-        conv_map[rid] = int(pd.to_numeric(conv, errors="coerce") if pd.notna(conv) else 0)
-
-    st.session_state.overrides["impressions"] = imp_map
-    st.session_state.overrides["converted_leads"] = conv_map
-
-    st.success("Changes applied. Table + KPIs updated.")
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
@@ -513,7 +476,7 @@ c2.plotly_chart(fig5, use_container_width=True)
 st.divider()
 
 # -----------------------------
-# Decomposition View (Power BI-like)
+# Decomposition View
 # -----------------------------
 st.subheader("Decomposition View")
 
