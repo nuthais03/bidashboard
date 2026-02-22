@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:
     PDF_AVAILABLE = False
 
-st.set_page_config(page_title="Marketing Performance Dashboard (Matplotlib)", layout="wide")
+st.set_page_config(page_title="OWT Performance Dashboard", layout="wide")
 
 st.markdown(
     """
