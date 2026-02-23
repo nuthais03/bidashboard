@@ -769,3 +769,32 @@ with st.expander("Show final filtered dataset"):
     out = d[FINAL_COL_ORDER].copy()
     out["conversion_rate_%"] = (out["conversion_rate"] * 100).round(2)
     st.dataframe(out, use_container_width=True, hide_index=True)
+st.markdown(
+    """
+    <style>
+      .vp-footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        padding: 10px 16px;
+        text-align: center;
+        font-size: 13px;
+        opacity: 0.85;
+        background: rgba(0,0,0,0.35);
+        backdrop-filter: blur(8px);
+        border-top: 1px solid rgba(255,255,255,0.08);
+        z-index: 9999;
+      }
+      .vp-footer a { text-decoration: none; font-weight: 600; }
+      .vp-footer a:hover { text-decoration: underline; }
+    </style>
+
+    <div class="vp-footer">
+      Developed by <a href="https://www.vertexprimetech.com/" target="_blank" rel="noopener noreferrer">
+      Vertext Prime Technologies &amp; BPO
+      </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
