@@ -792,7 +792,7 @@ st.markdown(
 
     <div class="vp-footer">
       Developed by <a href="https://www.vertexprimetech.com/" target="_blank" rel="noopener noreferrer">
-      Vertext Prime Technologies &amp; BPO
+      Vertex Prime Technologies &amp; BPO
       </a>
     </div>
     """,
