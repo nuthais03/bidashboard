@@ -769,6 +769,7 @@ with st.expander("Show final filtered dataset"):
     out = d[FINAL_COL_ORDER].copy()
     out["conversion_rate_%"] = (out["conversion_rate"] * 100).round(2)
     st.dataframe(out, use_container_width=True, hide_index=True)
+st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
 st.markdown(
     """
     <style>
