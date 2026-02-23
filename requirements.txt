@@ -5,3 +5,5 @@ plotly
 matplotlib
 openpyxl
 reportlab
+streamlit-authenticator
+bcrypt
