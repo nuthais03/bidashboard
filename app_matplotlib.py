@@ -1,4 +1,5 @@
 import io
+import hmac
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -22,6 +23,7 @@ try:
 except ModuleNotFoundError:
     GSHEETS_AVAILABLE = False
 
+
 # -----------------------------
 # Branding config (OWT)
 # -----------------------------
@@ -30,7 +32,89 @@ APP_TITLE = "Marketing Performance Dashboard"
 APP_TAGLINE = "Private performance dashboard — upload Excel/CSV or enter data manually."
 BRAND_ACCENT = "#3B82F6"
 
+MONTH_ORDER = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+]
+
+FINAL_COL_ORDER = [
+    "month","brand","destination","impressions","cpl","spent_gbp","leads","converted_leads","conversion_rate"
+]
+
+MANUAL_UI_COLS = ["Month","Brand","Destination","Impressions","Spent (GBP)","Leads","Converted Leads"]
+
+
+# -----------------------------
+# Page setup
+# -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="wide")
+
+
+# -----------------------------
+# Remove Streamlit branding + footer/header
+# -----------------------------
+st.markdown(
+    """
+    <style>
+      #MainMenu {visibility: hidden;}
+      header {visibility: hidden;}
+      footer {visibility: hidden;}
+      [data-testid="stToolbar"] {display:none;}
+      [data-testid="stDecoration"] {display:none;}
+      [data-testid="stStatusWidget"] {visibility:hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# -----------------------------
+# Simple Login (session-based)
+# -----------------------------
+DEFAULT_USER = "DevOWT@2026"
+DEFAULT_PASS = "OWT@2026#?@"
+
+def _get_login_creds():
+    # Optional: override via Streamlit Cloud Secrets:
+    # [app_auth]
+    # username="DevOWT@2026"
+    # password="OWT@2026#?@"
+    user = st.secrets.get("app_auth", {}).get("username", DEFAULT_USER)
+    pw = st.secrets.get("app_auth", {}).get("password", DEFAULT_PASS)
+    return str(user), str(pw)
+
+def require_login():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return
+
+    st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+
+    with c2:
+        st.image(OWT_LOGO_URL, width=190)
+        st.markdown("### Login to continue")
+
+        with st.form("login_form", clear_on_submit=False):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            ok = st.form_submit_button("Login", type="primary")
+
+        if ok:
+            valid_u, valid_p = _get_login_creds()
+            if hmac.compare_digest(u.strip(), valid_u) and hmac.compare_digest(p, valid_p):
+                st.session_state.authenticated = True
+                st.success("Logged in.")
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    st.stop()
+
+require_login()
+
 
 # -----------------------------
 # Theme State
@@ -45,7 +129,7 @@ def apply_theme(theme_mode: str) -> None:
         st.markdown(
             f"""
             <style>
-              .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; }}
+              .block-container {{ padding-top: 1.0rem; padding-bottom: 5rem; }}
               section[data-testid="stSidebar"] {{ background-color: #ffffff; }}
               .stApp {{ background-color: #f5f7fb; color: #111111; }}
 
@@ -88,9 +172,7 @@ def apply_theme(theme_mode: str) -> None:
                 gap:6px;
               }}
               .dot {{
-                height: 8px;
-                width: 8px;
-                border-radius: 50%;
+                height: 8px; width: 8px; border-radius: 50%;
                 background: {BRAND_ACCENT};
                 display: inline-block;
               }}
@@ -103,13 +185,14 @@ def apply_theme(theme_mode: str) -> None:
         st.markdown(
             f"""
             <style>
-              .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; }}
+              .block-container {{ padding-top: 1.0rem; padding-bottom: 5rem; }}
               section[data-testid="stSidebar"] {{ background-color: #0b0f17; }}
               .stApp {{ background-color: #0b0f17; color: #ffffff; }}
 
               h1,h2,h3 {{ letter-spacing: 0.2px; }}
               [data-testid="stCaptionContainer"] {{ opacity: 0.85; }}
               [data-testid="stMetricValue"] {{ font-size: 1.6rem; }}
+              [data-testid="stMetricLabel"] {{ opacity:0.85; }}
 
               .card {{
                 border:1px solid rgba(255,255,255,0.10);
@@ -123,7 +206,7 @@ def apply_theme(theme_mode: str) -> None:
 
               .sb-sep {{
                 height:1px;
-                background: rgba(255,255,255,0.08);
+                background: rgba(255,255,255,0.10);
                 margin: 0 0 10px 0;
               }}
 
@@ -144,9 +227,7 @@ def apply_theme(theme_mode: str) -> None:
                 gap:6px;
               }}
               .dot {{
-                height: 8px;
-                width: 8px;
-                border-radius: 50%;
+                height: 8px; width: 8px; border-radius: 50%;
                 background: {BRAND_ACCENT};
                 display: inline-block;
               }}
@@ -155,10 +236,12 @@ def apply_theme(theme_mode: str) -> None:
             unsafe_allow_html=True,
         )
 
-
 apply_theme(st.session_state.theme_mode)
 
-# Sidebar logo
+
+# -----------------------------
+# Sidebar (logo + logout)
+# -----------------------------
 st.sidebar.markdown(
     f"""
     <div style="display:flex; align-items:center; gap:10px; padding:8px 6px 12px 6px;">
@@ -173,7 +256,14 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
+if st.sidebar.button("Logout", use_container_width=True):
+    st.session_state.authenticated = False
+    st.rerun()
+
+
+# -----------------------------
 # Header + theme toggle
+# -----------------------------
 st.markdown('<div class="header-bar">', unsafe_allow_html=True)
 h1, h2, h3, h4 = st.columns([2, 6, 2, 2])
 
@@ -196,17 +286,10 @@ with h4:
 st.markdown("</div>", unsafe_allow_html=True)
 st.write("")
 
-MONTH_ORDER = [
-    "January","February","March","April","May","June",
-    "July","August","September","October","November","December"
-]
 
-FINAL_COL_ORDER = [
-    "month","brand","destination","impressions","cpl","spent_gbp","leads","converted_leads","conversion_rate"
-]
-
-MANUAL_UI_COLS = ["Month","Brand","Destination","Impressions","Spent (GBP)","Leads","Converted Leads"]
-
+# -----------------------------
+# Helpers
+# -----------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = df.columns.str.strip()
@@ -235,8 +318,10 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     required = {"month","brand","destination","leads","spent_gbp"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError("Missing required columns: " + ", ".join(sorted(missing)) +
-                         " | Required: Month, Brand, Destination, Leads, Spent (GBP)")
+        raise ValueError(
+            "Missing required columns: " + ", ".join(sorted(missing)) +
+            " | Required: Month, Brand, Destination, Leads, Spent (GBP)"
+        )
 
     if "impressions" not in df.columns:
         df["impressions"] = 0
@@ -257,12 +342,14 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     leads_safe = out["leads"].replace(0, np.nan)
     out["cpl"] = (out["spent_gbp"] / leads_safe).fillna(0.0)
     out["conversion_rate"] = (out["converted_leads"] / leads_safe).fillna(0.0)
     return out
+
 
 def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
     df = base_df.copy()
@@ -278,6 +365,7 @@ def apply_overrides(base_df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
         df["converted_leads"] = df["row_id"].map(conv_map).combine_first(df["converted_leads"]).astype(int)
 
     return df
+
 
 def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
@@ -301,7 +389,7 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
     overall_cr = (total_conv / total_leads) if total_leads > 0 else 0.0
 
-    y = h - 4.0 * cm
+    y = h - 4.5 * cm
     c.setFont("Helvetica-Bold", 12)
     c.drawString(2 * cm, y, "Summary KPIs")
     y -= 0.8 * cm
@@ -321,53 +409,10 @@ def build_pdf_report(filters: dict, d: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
-# -----------------------------
-# Session state
-# -----------------------------
-if "mode" not in st.session_state:
-    st.session_state.mode = None
-if "overrides" not in st.session_state:
-    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
-if "manual_data" not in st.session_state:
-    st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
 
 # -----------------------------
-# Mode selector
+# Google Sheets helpers (manual save)
 # -----------------------------
-sp_l, mid, sp_r = st.columns([1, 3, 1])
-with mid:
-    b1, b2 = st.columns(2)
-    if b1.button("LEADS", use_container_width=True):
-        st.session_state.mode = "LEADS"
-    if b2.button("MESSAGES", use_container_width=True):
-        st.session_state.mode = "MESSAGES"
-
-st.markdown(
-    '<div style="text-align:center; opacity:0.85; margin: 6px 0 14px 0;">'
-    'Click <b>LEADS</b> or <b>MESSAGES</b> to continue.'
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-if not st.session_state.mode:
-    st.stop()
-
-st.divider()
-
-# -----------------------------
-# Data input
-# -----------------------------
-st.subheader("Data Input")
-
-data_source = st.radio(
-    "Choose data source",
-    ["Upload Excel/CSV", "Enter data manually (Google Sheet)"],
-    horizontal=True,
-)
-
-df_base = None
-
-# Google Sheets helpers
 def _get_gs_client():
     if not GSHEETS_AVAILABLE:
         raise RuntimeError("Google Sheets libraries missing. Add gspread + google-auth to requirements.txt")
@@ -414,6 +459,90 @@ def save_manual_to_gsheet(df_ui: pd.DataFrame):
     ws.clear()
     ws.update(out)
 
+
+# -----------------------------
+# App mode buttons (center top)
+# -----------------------------
+if "mode" not in st.session_state:
+    st.session_state.mode = None
+
+mid_l, mid, mid_r = st.columns([1, 3, 1])
+with mid:
+    b1, b2 = st.columns(2)
+    if b1.button("LEADS", use_container_width=True):
+        st.session_state.mode = "LEADS"
+    if b2.button("MESSAGES", use_container_width=True):
+        st.session_state.mode = "MESSAGES"
+
+st.markdown(
+    '<div class="muted" style="text-align:center; margin-top:8px;">Click <b>LEADS</b> or <b>MESSAGES</b> to continue.</div>',
+    unsafe_allow_html=True,
+)
+
+if not st.session_state.mode:
+    st.stop()
+
+st.divider()
+
+
+# -----------------------------
+# Messages placeholder
+# -----------------------------
+if st.session_state.mode == "MESSAGES":
+    st.subheader("Messages Dashboard")
+    st.info("Messages dashboard coming soon")
+    # Custom footer (fixed)
+    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+          .vp-footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            padding: 10px 16px;
+            text-align: center;
+            font-size: 13px;
+            opacity: 0.85;
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid rgba(255,255,255,0.08);
+            z-index: 9999;
+          }
+          .vp-footer a { text-decoration: none; font-weight: 600; }
+          .vp-footer a:hover { text-decoration: underline; }
+        </style>
+
+        <div class="vp-footer">
+          Developed by <a href="https://www.vertexprimetech.com/" target="_blank" rel="noopener noreferrer">
+          Vertex Prime Technologies &amp; BPO
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    st.stop()
+
+
+# -----------------------------
+# Leads dashboard
+# -----------------------------
+if "overrides" not in st.session_state:
+    st.session_state.overrides = {"impressions": {}, "converted_leads": {}}
+if "manual_data" not in st.session_state:
+    st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
+
+st.subheader("Leads Dashboard")
+
+data_source = st.radio(
+    "Choose data source",
+    ["Upload Excel/CSV", "Enter data manually (Google Sheet)"],
+    horizontal=True,
+)
+
+df_base = None
+
 if data_source == "Upload Excel/CSV":
     uploaded_file = st.file_uploader("Upload Excel / CSV", type=["xlsx", "csv"])
     if not uploaded_file:
@@ -443,6 +572,7 @@ else:
     load_btn = a1.button("Load from Google Sheet")
     save_btn = a2.button("Save to Google Sheet", type="primary")
 
+    # Safe load/save handling
     if load_btn:
         try:
             st.session_state.manual_data = load_manual_from_gsheet()
@@ -469,7 +599,7 @@ else:
     )
     st.session_state.manual_data = manual_editor.copy()
 
-    b1, b2, b3 = st.columns([1, 1, 2])
+    b1, b2, _ = st.columns([1, 1, 2])
     if b1.button("Clear manual data"):
         st.session_state.manual_data = pd.DataFrame(columns=MANUAL_UI_COLS)
         st.success("Manual data cleared.")
@@ -512,19 +642,13 @@ else:
 
 st.divider()
 
-# Messages placeholder
-if st.session_state.mode == "MESSAGES":
-    st.subheader("Messages Dashboard")
-    st.info("Messages dashboard coming soon")
-    st.stop()
 
 # -----------------------------
-# Leads filters
+# Filters
 # -----------------------------
 df_base = compute_metrics(df_base)
 
 st.sidebar.header("Filters")
-
 available_months = [m for m in MONTH_ORDER if m in df_base["month"].dropna().astype(str).unique().tolist()]
 if not available_months:
     available_months = sorted(df_base["month"].dropna().astype(str).unique().tolist())
@@ -544,6 +668,7 @@ d0["row_id"] = d0["month"].astype(str) + "||" + d0["brand"].astype(str) + "||" +
 d0 = apply_overrides(d0, st.session_state.overrides)
 d = compute_metrics(d0)
 
+
 # Export filtered CSV
 st.download_button(
     "Download filtered data (CSV)",
@@ -554,8 +679,9 @@ st.download_button(
 
 st.write("")
 
+
 # -----------------------------
-# KPI Row (Spend, Leads, Brands, Destinations) — screenshot row (BEFORE table)
+# KPI Row (BEFORE table)
 # -----------------------------
 total_spend = float(d["spent_gbp"].sum())
 total_leads = int(d["leads"].sum())
@@ -568,8 +694,9 @@ kpi4.metric("Destinations", f"{d['destination'].nunique():,}")
 
 st.divider()
 
+
 # -----------------------------
-# Top Brands block — screenshot section (BEFORE table)
+# Top Brands (BEFORE table)
 # -----------------------------
 st.markdown("## Top Brands")
 left, right = st.columns(2)
@@ -597,8 +724,9 @@ with right:
 
 st.divider()
 
+
 # -----------------------------
-# ✅ Editable Table (after the summary blocks)
+# Editable Table (Apply once, updates immediately)
 # -----------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### Editable Table (Impressions + Converted Leads)")
@@ -608,7 +736,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# CSV template download (for table section)
 template_df = pd.DataFrame([
     {"Month":"January","Brand":"OWT","Destination":"Philippines","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
     {"Month":"January","Brand":"TH-UK","Destination":"Thailand","Impressions":0,"Spent (GBP)":0,"Leads":0,"Converted Leads":0},
@@ -620,7 +747,6 @@ st.download_button(
     mime="text/csv"
 )
 
-# Use FORM so you never need to click twice
 with st.form("edit_form", clear_on_submit=False):
     table = d[FINAL_COL_ORDER].copy()
     table["conversion_rate"] = (table["conversion_rate"] * 100).round(2)
@@ -633,6 +759,7 @@ with st.form("edit_form", clear_on_submit=False):
             "month": st.column_config.TextColumn("Month", disabled=True),
             "brand": st.column_config.TextColumn("Brand", disabled=True),
             "destination": st.column_config.TextColumn("Destination", disabled=True),
+
             "impressions": st.column_config.NumberColumn("Impressions", min_value=0, step=1),
 
             "cpl": st.column_config.NumberColumn("CPL", format="£%.2f", disabled=True),
@@ -640,6 +767,7 @@ with st.form("edit_form", clear_on_submit=False):
             "leads": st.column_config.NumberColumn("Leads", disabled=True),
 
             "converted_leads": st.column_config.NumberColumn("Converted Leads", min_value=0, step=1),
+
             "conversion_rate": st.column_config.NumberColumn("Conversion Rate", format="%.2f%%", disabled=True),
         },
     )
@@ -674,13 +802,13 @@ if apply_btn:
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
+
 st.divider()
 
+
 # -----------------------------
-# ✅ 6 KPI SUMMARY ROW (PLACE BELOW THE TABLE) — requested
+# Overall KPI Summary (BELOW table)
 # -----------------------------
-total_spend = float(d["spent_gbp"].sum())
-total_leads = int(d["leads"].sum())
 total_impr = int(d["impressions"].sum())
 total_conv = int(d["converted_leads"].sum())
 overall_cpl = (total_spend / total_leads) if total_leads > 0 else 0.0
@@ -696,34 +824,29 @@ k6.metric("Overall Conversion Rate", f"{overall_cr*100:,.2f}%")
 
 st.divider()
 
+
 # -----------------------------
-# Charts: Brand level
+# Charts
 # -----------------------------
 st.subheader("Brand Level")
 b1, b2, b3 = st.columns(3)
 
 brand_spend = d.groupby("brand", as_index=False)["spent_gbp"].sum().sort_values("spent_gbp", ascending=True)
 fig1 = px.bar(brand_spend, x="spent_gbp", y="brand", orientation="h", title="Spend by Brand")
-fig1.update_layout(xaxis_title="Spend (GBP)", yaxis_title="Brand")
 b1.plotly_chart(fig1, use_container_width=True)
 
 brand_leads = d.groupby("brand", as_index=False)["leads"].sum().sort_values("leads", ascending=True)
 fig2 = px.bar(brand_leads, x="leads", y="brand", orientation="h", title="Leads by Brand")
-fig2.update_layout(xaxis_title="Leads", yaxis_title="Brand")
 b2.plotly_chart(fig2, use_container_width=True)
 
 brand_cpl = d.groupby("brand", as_index=False).agg(spend=("spent_gbp", "sum"), leads=("leads", "sum"))
 brand_cpl["cpl"] = np.where(brand_cpl["leads"] > 0, brand_cpl["spend"] / brand_cpl["leads"], 0.0)
 brand_cpl = brand_cpl.sort_values("cpl", ascending=True)
 fig3 = px.bar(brand_cpl, x="cpl", y="brand", orientation="h", title="CPL by Brand")
-fig3.update_layout(xaxis_title="CPL (GBP)", yaxis_title="Brand")
 b3.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
 
-# -----------------------------
-# Destination level
-# -----------------------------
 st.subheader("Destination Level")
 top_n = st.slider("Top N Destinations", 5, 30, 10)
 
@@ -736,17 +859,16 @@ dest = d.groupby("destination", as_index=False).agg(
 dest["conversion_rate"] = np.where(dest["leads"] > 0, dest["converted"] / dest["leads"], 0.0)
 
 c1, c2 = st.columns(2)
-top_spend = dest.sort_values("spend", ascending=False).head(top_n).sort_values("spend")
-fig4 = px.bar(top_spend, x="spend", y="destination", orientation="h", title="Top Destinations by Spend")
-fig4.update_layout(xaxis_title="Spend (GBP)", yaxis_title="Destination")
+top_spend_d = dest.sort_values("spend", ascending=False).head(top_n).sort_values("spend")
+fig4 = px.bar(top_spend_d, x="spend", y="destination", orientation="h", title="Top Destinations by Spend")
 c1.plotly_chart(fig4, use_container_width=True)
 
-top_leads = dest.sort_values("leads", ascending=False).head(top_n).sort_values("leads")
-fig5 = px.bar(top_leads, x="leads", y="destination", orientation="h", title="Top Destinations by Leads")
-fig5.update_layout(xaxis_title="Leads", yaxis_title="Destination")
+top_leads_d = dest.sort_values("leads", ascending=False).head(top_n).sort_values("leads")
+fig5 = px.bar(top_leads_d, x="leads", y="destination", orientation="h", title="Top Destinations by Leads")
 c2.plotly_chart(fig5, use_container_width=True)
 
 st.divider()
+
 
 # -----------------------------
 # PDF Download
@@ -765,10 +887,16 @@ if PDF_AVAILABLE:
 else:
     st.warning("PDF export disabled. Add 'reportlab' to requirements.txt.")
 
+
 with st.expander("Show final filtered dataset"):
     out = d[FINAL_COL_ORDER].copy()
     out["conversion_rate_%"] = (out["conversion_rate"] * 100).round(2)
     st.dataframe(out, use_container_width=True, hide_index=True)
+
+
+# -----------------------------
+# Custom footer (Vertex Prime)
+# -----------------------------
 st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
 st.markdown(
     """
